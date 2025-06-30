@@ -1,0 +1,93 @@
+.App {
+  text-align: center;
+  font-family: sans-serif;
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+  padding: 20px;
+}
+
+textarea {
+  font-size: 1rem;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  width: 600px;
+  min-height: 80px;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 1rem;
+  background-color: #61dafb;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: #282c34;
+  font-weight: bold;
+}
+
+button:hover {
+  background-color: #21a1f1;
+}
+
+.error-message {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #ffdddd;
+  border: 1px solid #ff0000;
+  color: #D8000C;
+  border-radius: 5px;
+  text-align: left;
+  max-width: 600px;
+  width: 100%;
+}
+
+.error-message pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+
+.result-container {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  color: #333;
+  border-radius: 5px;
+  text-align: left;
+  max-width: 800px;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.result-container h3 {
+  margin-top: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background-color: #e0e0e0;
+  font-weight: bold;
+}
