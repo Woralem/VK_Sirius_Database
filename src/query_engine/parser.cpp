@@ -1,13 +1,41 @@
 #include "query_engine/parser.h"
 #include "query_engine/lexer.h"
-#include "utils/logger.h"
 #include <stdexcept>
-#include <sstream>
 #include <algorithm>
 
 namespace query_engine {
 
-Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {}
+const std::unordered_map<TokenType, Parser::ParseRule> Parser::parseRules = {
+    {TokenType::NUMBER_LITERAL, {primary, nullptr, Precedence::NONE}},
+    {TokenType::STRING_LITERAL, {primary, nullptr, Precedence::NONE}},
+    {TokenType::NULL_TOKEN, {primary, nullptr, Precedence::NONE}},
+    {TokenType::IDENTIFIER, {primary, nullptr, Precedence::NONE}},
+    {TokenType::LEFT_PAREN, {grouping, nullptr, Precedence::NONE}},
+
+    {TokenType::EQUALS, {nullptr, binary, Precedence::EQUALITY}},
+    {TokenType::NOT_EQUALS, {nullptr, binary, Precedence::EQUALITY}},
+    {TokenType::LESS_THAN, {nullptr, binary, Precedence::COMPARISON}},
+    {TokenType::GREATER_THAN, {nullptr, binary, Precedence::COMPARISON}},
+    {TokenType::LESS_EQUALS, {nullptr, binary, Precedence::COMPARISON}},
+    {TokenType::GREATER_EQUALS, {nullptr, binary, Precedence::COMPARISON}},
+    {TokenType::AND, {nullptr, binary, Precedence::AND}},
+    {TokenType::OR, {nullptr, binary, Precedence::OR}},
+};
+
+const std::unordered_map<TokenType, BinaryExpr::Operator> Parser::binaryOps = {
+    {TokenType::EQUALS, BinaryExpr::Operator::EQ},
+    {TokenType::NOT_EQUALS, BinaryExpr::Operator::NE},
+    {TokenType::LESS_THAN, BinaryExpr::Operator::LT},
+    {TokenType::GREATER_THAN, BinaryExpr::Operator::GT},
+    {TokenType::LESS_EQUALS, BinaryExpr::Operator::LE},
+    {TokenType::GREATER_EQUALS, BinaryExpr::Operator::GE},
+    {TokenType::AND, BinaryExpr::Operator::AND},
+    {TokenType::OR, BinaryExpr::Operator::OR},
+};
+
+Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {
+    errors.reserve(10);
+}
 
 ASTNodePtr Parser::parse() {
     while(match({TokenType::SEMICOLON})) {}
@@ -35,9 +63,8 @@ ASTNodePtr Parser::parse() {
     }
 }
 
-
 bool Parser::isAtEnd() const {
-    return tokens[current].type == TokenType::END_OF_FILE;
+    return current >= tokens.size() || tokens[current].type == TokenType::END_OF_FILE;
 }
 
 Token Parser::peek() const {
@@ -74,7 +101,13 @@ Token Parser::consume(TokenType type, const std::string& message) {
     if (check(type)) {
         return advance();
     }
-    std::string error_msg = message + " (got " + tokenTypeToString(peek().type) + " at line " + std::to_string(peek().line) + ")";
+
+    std::string error_msg = message + " (got ";
+    error_msg += tokenTypeToString(peek().type);
+    error_msg += " at line ";
+    error_msg += std::to_string(peek().line);
+    error_msg += ")";
+
     error(error_msg);
     throw std::runtime_error(message);
 }
@@ -88,10 +121,8 @@ void Parser::error(const std::string& message) {
 ASTNodePtr Parser::statement() {
     if (check(TokenType::SELECT)) return selectStatement();
     if (check(TokenType::INSERT)) return insertStatement();
-    // --- ИЗМЕНЕНО ---
     if (check(TokenType::UPDATE_KEYWORD)) return updateStatement();
     if (check(TokenType::DELETE_KEYWORD)) return deleteStatement();
-    // ---
     if (check(TokenType::CREATE)) return createTableStatement();
 
     if (!isAtEnd()) {
@@ -100,6 +131,80 @@ ASTNodePtr Parser::statement() {
     return nullptr;
 }
 
+ASTNodePtr Parser::expression() {
+    return parsePrecedence(Precedence::OR);
+}
+
+ASTNodePtr Parser::parsePrecedence(Precedence precedence) {
+    advance();
+
+    auto prefixIt = parseRules.find(previous().type);
+    if (prefixIt == parseRules.end() || !prefixIt->second.prefix) {
+        error("Expected expression");
+        return nullptr;
+    }
+
+    auto left = prefixIt->second.prefix(this);
+
+    while (!isAtEnd()) {
+        auto infixIt = parseRules.find(peek().type);
+        if (infixIt == parseRules.end() ||
+            infixIt->second.precedence <= precedence) {
+            break;
+        }
+
+        advance();
+        left = infixIt->second.infix(this, std::move(left));
+    }
+
+    return left;
+}
+
+ASTNodePtr Parser::primary(Parser* parser) {
+    Token token = parser->previous();
+
+    switch (token.type) {
+        case TokenType::NUMBER_LITERAL:
+        case TokenType::STRING_LITERAL:
+        case TokenType::NULL_TOKEN:
+            return std::make_unique<LiteralExpr>(token.value);
+
+        case TokenType::IDENTIFIER: {
+            std::string upperLexeme = token.lexeme;
+            std::transform(upperLexeme.begin(), upperLexeme.end(), upperLexeme.begin(), ::toupper);
+
+            if (upperLexeme == "TRUE") return std::make_unique<LiteralExpr>(true);
+            if (upperLexeme == "FALSE") return std::make_unique<LiteralExpr>(false);
+
+            return std::make_unique<IdentifierExpr>(token.lexeme);
+        }
+
+        default:
+            parser->error("Unexpected token in expression");
+            return nullptr;
+    }
+}
+
+ASTNodePtr Parser::grouping(Parser* parser) {
+    auto expr = parser->expression();
+    parser->consume(TokenType::RIGHT_PAREN, "Expected ')' after expression");
+    return expr;
+}
+
+ASTNodePtr Parser::binary(Parser* parser, ASTNodePtr left) {
+    Token opToken = parser->previous();
+    auto precedence = parseRules.at(opToken.type).precedence;
+
+    auto right = parser->parsePrecedence(static_cast<Precedence>(static_cast<int>(precedence) + 1));
+
+    auto opIt = binaryOps.find(opToken.type);
+    if (opIt != binaryOps.end()) {
+        return std::make_unique<BinaryExpr>(opIt->second, std::move(left), std::move(right));
+    }
+
+    parser->error("Unknown binary operator");
+    return nullptr;
+}
 
 std::unique_ptr<SelectStmt> Parser::selectStatement() {
     consume(TokenType::SELECT, "Expected SELECT");
@@ -117,7 +222,7 @@ std::unique_ptr<SelectStmt> Parser::selectStatement() {
 
     consume(TokenType::FROM, "Expected FROM after column list");
     Token tableName = consume(TokenType::IDENTIFIER, "Expected table name");
-    stmt->tableName = tableName.lexeme;
+    stmt->tableName = std::move(tableName.lexeme);
 
     if (match({TokenType::WHERE})) {
         stmt->whereClause = expression();
@@ -131,7 +236,7 @@ std::unique_ptr<InsertStmt> Parser::insertStatement() {
     auto stmt = std::make_unique<InsertStmt>();
     consume(TokenType::INTO, "Expected INTO after INSERT");
     Token tableName = consume(TokenType::IDENTIFIER, "Expected table name");
-    stmt->tableName = tableName.lexeme;
+    stmt->tableName = std::move(tableName.lexeme);
 
     if (match({TokenType::LEFT_PAREN})) {
         stmt->columns = parseColumnList();
@@ -139,6 +244,8 @@ std::unique_ptr<InsertStmt> Parser::insertStatement() {
     }
 
     consume(TokenType::VALUES, "Expected VALUES");
+
+    stmt->values.reserve(10);
 
     do {
         consume(TokenType::LEFT_PAREN, "Expected '(' before values");
@@ -154,29 +261,30 @@ std::unique_ptr<InsertStmt> Parser::insertStatement() {
 }
 
 std::unique_ptr<UpdateStmt> Parser::updateStatement() {
-    // --- ИЗМЕНЕНО ---
     consume(TokenType::UPDATE_KEYWORD, "Expected UPDATE");
     auto stmt = std::make_unique<UpdateStmt>();
     Token tableName = consume(TokenType::IDENTIFIER, "Expected table name after UPDATE");
-    stmt->tableName = tableName.lexeme;
+    stmt->tableName = std::move(tableName.lexeme);
 
     consume(TokenType::SET, "Expected SET after table name");
+
+    stmt->assignments.reserve(5);
 
     do {
         Token column = consume(TokenType::IDENTIFIER, "Expected column name in SET clause");
         consume(TokenType::EQUALS, "Expected '=' after column name");
 
         if (match({TokenType::NUMBER_LITERAL, TokenType::STRING_LITERAL, TokenType::NULL_TOKEN})) {
-            stmt->assignments.push_back({column.lexeme, previous().value});
+            stmt->assignments.emplace_back(std::move(column.lexeme), previous().value);
         } else if (check(TokenType::IDENTIFIER)) {
             std::string id_lexeme = peek().lexeme;
             std::transform(id_lexeme.begin(), id_lexeme.end(), id_lexeme.begin(), ::toupper);
             if (id_lexeme == "TRUE") {
                 advance();
-                stmt->assignments.push_back({column.lexeme, true});
+                stmt->assignments.emplace_back(std::move(column.lexeme), true);
             } else if (id_lexeme == "FALSE") {
                 advance();
-                stmt->assignments.push_back({column.lexeme, false});
+                stmt->assignments.emplace_back(std::move(column.lexeme), false);
             } else {
                  error("Unexpected identifier '" + peek().lexeme + "' in SET clause, expected a value.");
             }
@@ -194,12 +302,11 @@ std::unique_ptr<UpdateStmt> Parser::updateStatement() {
 }
 
 std::unique_ptr<DeleteStmt> Parser::deleteStatement() {
-    // --- ИЗМЕНЕНО ---
     consume(TokenType::DELETE_KEYWORD, "Expected DELETE");
     auto stmt = std::make_unique<DeleteStmt>();
     consume(TokenType::FROM, "Expected FROM after DELETE");
     Token tableName = consume(TokenType::IDENTIFIER, "Expected table name");
-    stmt->tableName = tableName.lexeme;
+    stmt->tableName = std::move(tableName.lexeme);
 
     if (match({TokenType::WHERE})) {
         stmt->whereClause = expression();
@@ -212,9 +319,11 @@ std::unique_ptr<CreateTableStmt> Parser::createTableStatement() {
     auto stmt = std::make_unique<CreateTableStmt>();
     consume(TokenType::TABLE, "Expected TABLE after CREATE");
     Token tableName = consume(TokenType::IDENTIFIER, "Expected table name");
-    stmt->tableName = tableName.lexeme;
+    stmt->tableName = std::move(tableName.lexeme);
 
     consume(TokenType::LEFT_PAREN, "Expected '(' after table name");
+
+    stmt->columns.reserve(10);
 
     if (check(TokenType::RIGHT_PAREN)) {
         error("Column definitions cannot be empty");
@@ -228,77 +337,10 @@ std::unique_ptr<CreateTableStmt> Parser::createTableStatement() {
     return stmt;
 }
 
-ASTNodePtr Parser::expression() { return logic_or(); }
-
-ASTNodePtr Parser::logic_or() {
-    auto expr = logic_and();
-    while (match({TokenType::OR})) {
-        auto right = logic_and();
-        expr = std::make_unique<BinaryExpr>(BinaryExpr::Operator::OR, std::move(expr), std::move(right));
-    }
-    return expr;
-}
-
-ASTNodePtr Parser::logic_and() {
-    auto expr = equality();
-    while (match({TokenType::AND})) {
-        auto right = equality();
-        expr = std::make_unique<BinaryExpr>(BinaryExpr::Operator::AND, std::move(expr), std::move(right));
-    }
-    return expr;
-}
-
-ASTNodePtr Parser::equality() {
-    auto expr = comparison();
-    while (match({TokenType::EQUALS, TokenType::NOT_EQUALS})) {
-        Token op = previous();
-        auto right = comparison();
-        auto opType = (op.type == TokenType::EQUALS) ? BinaryExpr::Operator::EQ : BinaryExpr::Operator::NE;
-        expr = std::make_unique<BinaryExpr>(opType, std::move(expr), std::move(right));
-    }
-    return expr;
-}
-
-ASTNodePtr Parser::comparison() {
-    auto expr = primary();
-    while (match({TokenType::GREATER_THAN, TokenType::GREATER_EQUALS, TokenType::LESS_THAN, TokenType::LESS_EQUALS})) {
-        Token op = previous();
-        auto right = primary();
-        BinaryExpr::Operator opType;
-        if (op.type == TokenType::GREATER_THAN) opType = BinaryExpr::Operator::GT;
-        else if (op.type == TokenType::GREATER_EQUALS) opType = BinaryExpr::Operator::GE;
-        else if (op.type == TokenType::LESS_THAN) opType = BinaryExpr::Operator::LT;
-        else opType = BinaryExpr::Operator::LE;
-        expr = std::make_unique<BinaryExpr>(opType, std::move(expr), std::move(right));
-    }
-    return expr;
-}
-
-ASTNodePtr Parser::primary() {
-    if (match({TokenType::NUMBER_LITERAL, TokenType::STRING_LITERAL, TokenType::NULL_TOKEN})) {
-        return std::make_unique<LiteralExpr>(previous().value);
-    }
-    if (check(TokenType::IDENTIFIER)) {
-        std::string upperLexeme = peek().lexeme;
-        std::transform(upperLexeme.begin(), upperLexeme.end(), upperLexeme.begin(), ::toupper);
-        if (upperLexeme == "TRUE") {
-            advance(); return std::make_unique<LiteralExpr>(true);
-        }
-        if (upperLexeme == "FALSE") {
-            advance(); return std::make_unique<LiteralExpr>(false);
-        }
-        return std::make_unique<IdentifierExpr>(advance().lexeme);
-    }
-    if (match({TokenType::LEFT_PAREN})) {
-        auto expr = expression();
-        consume(TokenType::RIGHT_PAREN, "Expected ')' after expression");
-        return expr;
-    }
-    error("Expected expression, literal or identifier");
-    return nullptr;
-}
 std::vector<std::string> Parser::parseColumnList() {
     std::vector<std::string> columns;
+    columns.reserve(10);
+
     if (!check(TokenType::RIGHT_PAREN)) {
         do {
             if (check(TokenType::ASTERISK)) error("'*' must be used alone in column list.");
@@ -307,8 +349,11 @@ std::vector<std::string> Parser::parseColumnList() {
     }
     return columns;
 }
+
 std::vector<Value> Parser::parseValueList() {
     std::vector<Value> values;
+    values.reserve(10);
+
     if (!check(TokenType::RIGHT_PAREN)) {
         do {
             if (match({TokenType::NUMBER_LITERAL, TokenType::STRING_LITERAL, TokenType::NULL_TOKEN})) {
@@ -317,9 +362,11 @@ std::vector<Value> Parser::parseValueList() {
                  std::string upperLexeme = peek().lexeme;
                  std::transform(upperLexeme.begin(), upperLexeme.end(), upperLexeme.begin(), ::toupper);
                  if (upperLexeme == "TRUE") {
-                     advance(); values.push_back(true);
+                     advance();
+                     values.push_back(true);
                  } else if (upperLexeme == "FALSE") {
-                     advance(); values.push_back(false);
+                     advance();
+                     values.push_back(false);
                  } else {
                     error("Unexpected identifier in value list, expected a literal");
                  }

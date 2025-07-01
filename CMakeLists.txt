@@ -39,14 +39,13 @@ if(WIN32)
 endif()
 
 add_executable(run_tests
-        # Исходники самих тестов
         tests/test_framework.h
         tests/test_lexer.cpp
         tests/test_parser.cpp
         tests/test_executor.cpp
         tests/run_tests.cpp
-        # Исходники движка, которые мы тестируем
         ${QUERY_ENGINE_SOURCES}
+        tests/test_optimized.cpp
 )
 
 target_include_directories(run_tests
@@ -85,11 +84,10 @@ if(BUILD_WEB_SERVER)
 
     set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include CACHE INTERNAL "")
 
-    # Web server executable (без файлов тестов)
     add_executable(database_server
             src/main.cpp
             ${QUERY_ENGINE_SOURCES}
-            include/storage/in_memory_storage.h
+            include/storage/optimized_in_memory_storage.h
     )
 
     target_include_directories(database_server

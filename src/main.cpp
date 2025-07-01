@@ -6,7 +6,7 @@
 #include "query_engine/lexer.h"
 #include "query_engine/parser.h"
 #include "query_engine/executor.h"
-#include "storage/in_memory_storage.h" // Временно пока не реализовн Storage Layer
+#include "storage/optimized_in_memory_storage.h" // Временно пока не реализовн Storage Layer
 
 using json = nlohmann::json;
 

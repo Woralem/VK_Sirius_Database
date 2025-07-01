@@ -3,6 +3,7 @@
 void addLexerTests(tests::TestFramework& framework);
 void addParserTests(tests::TestFramework& framework);
 void addExecutorTests(tests::TestFramework& framework);
+void addOptimizedExecutorTests(tests::TestFramework& framework);
 
 int main() {
     tests::TestFramework framework;
@@ -10,6 +11,7 @@ int main() {
     addLexerTests(framework);
     addParserTests(framework);
     addExecutorTests(framework);
+    addOptimizedExecutorTests(framework);
 
     framework.runAllTests();
 

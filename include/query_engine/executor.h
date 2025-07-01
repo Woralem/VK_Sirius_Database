@@ -3,10 +3,10 @@
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 
 namespace query_engine {
 
-// Forward declaration for storage interface
 struct StorageInterface {
     virtual ~StorageInterface() = default;
 
@@ -28,11 +28,13 @@ struct StorageInterface {
 class QueryExecutor {
 public:
     explicit QueryExecutor(std::shared_ptr<StorageInterface> storage);
+    virtual ~QueryExecutor() = default;
 
     nlohmann::json execute(const ASTNodePtr& ast);
 
-private:
+protected:
     std::shared_ptr<StorageInterface> storage;
+    bool enableLogging = false;
 
     // Execute different statement types
     nlohmann::json executeSelect(const SelectStmt* stmt);
@@ -47,7 +49,26 @@ private:
 
     // Helper methods
     std::function<bool(const nlohmann::json&)> createPredicate(const ASTNode* whereClause);
+
+    // Optimized string building
+    void appendValueToString(std::string& result, const Value& value);
     std::string valueToString(const Value& value);
+
+private:
+    // Cache for compiled predicates
+    mutable std::unordered_map<const ASTNode*,
+        std::function<bool(const nlohmann::json&)>> predicateCache;
+};
+
+// Optimized executor with caching and reduced logging
+class OptimizedQueryExecutor : public QueryExecutor {
+public:
+    explicit OptimizedQueryExecutor(std::shared_ptr<StorageInterface> storage)
+        : QueryExecutor(storage) {
+        enableLogging = false;
+    }
+
+    void setLoggingEnabled(bool enabled) { enableLogging = enabled; }
 };
 
 }
