@@ -6,15 +6,16 @@
 #include "query_engine/lexer.h"
 #include "query_engine/parser.h"
 #include "query_engine/executor.h"
-#include "storage/optimized_in_memory_storage.h" // Временно пока не реализовн Storage Layer
+#include "storage/optimized_in_memory_storage.h"
 
 using json = nlohmann::json;
 
 int main() {
     crow::SimpleApp app;
 
-    auto storage = std::make_shared<InMemoryStorage>();
-    auto executor = std::make_shared<query_engine::QueryExecutor>(storage);
+    auto storage = std::make_shared<OptimizedInMemoryStorage>();
+    auto executor = std::make_shared<query_engine::OptimizedQueryExecutor>(storage);
+    executor->setLoggingEnabled(false);
 
     CROW_LOG_INFO << "Database Server starting...";
 
@@ -25,10 +26,10 @@ int main() {
 
     CROW_ROUTE(app, "/api/query")
     .methods(crow::HTTPMethod::Post)
-    ([&executor](const crow::request& req){
+    ([executor](const crow::request& req){
         crow::response res;
         res.add_header("Content-Type", "application/json");
-        res.add_header("Access-Control-Allow-Origin", "*"); // Разрешаем кросс-доменные запросы для фронтенда
+        res.add_header("Access-Control-Allow-Origin", "*");
 
         try {
             auto body = json::parse(req.body);
@@ -62,7 +63,7 @@ int main() {
                 return res;
             }
 
-            if (!ast) { // Пустой запрос
+            if (!ast) {
                 res.code = 200;
                 res.body = json{
                     {"status", "success"},
