@@ -13,7 +13,7 @@ public:
         INFO,
         SUCCESS,
         WARNING,
-        ERROR
+        ERR//ПЕРЕИМЕНОВАЛА ЧТОБЫ НЕ БЫЛО КОНФЛИКТА ИМЕН
     };
 
     enum class Color {
@@ -39,7 +39,7 @@ public:
     static void log(Level level, const std::string& component, const std::string& message) {
         Color color;
         std::string prefix;
-        
+
         switch (level) {
             case Level::DEBUG:
                 color = Color::BRIGHT_BLACK;
@@ -57,29 +57,29 @@ public:
                 color = Color::BRIGHT_YELLOW;
                 prefix = "[WARN ]";
                 break;
-            case Level::ERROR:
+            case Level::ERR:
                 color = Color::BRIGHT_RED;
                 prefix = "[ERROR]";
                 break;
         }
-        
+
         std::cout << "\033[" << static_cast<int>(color) << "m"
                   << prefix << " "
                   << std::left << std::setw(15) << ("[" + component + "]")
                   << message
                   << "\033[0m" << std::endl;
     }
-    
+
     static void separator() {
         std::cout << "\033[90m" << std::string(80, '-') << "\033[0m" << std::endl;
     }
-    
+
     static void header(const std::string& text) {
         separator();
         std::cout << "\033[1;36m" << ">>> " << text << " <<<\033[0m" << std::endl;
         separator();
     }
-    
+
     static void printBox(const std::string& title, const std::string& content) {
         std::cout << "\033[94m+- " << title << " " << std::string(75 - title.length(), '-') << "+\033[0m" << std::endl;
 
@@ -99,4 +99,4 @@ public:
 #define LOG_INFO(component, message) ::utils::Logger::log(::utils::Logger::Level::INFO, component, message)
 #define LOG_SUCCESS(component, message) ::utils::Logger::log(::utils::Logger::Level::SUCCESS, component, message)
 #define LOG_WARNING(component, message) ::utils::Logger::log(::utils::Logger::Level::WARNING, component, message)
-#define LOG_ERROR(component, message) ::utils::Logger::log(::utils::Logger::Level::ERROR, component, message)
+#define LOG_ERROR(component, message) ::utils::Logger::log(::utils::Logger::Level::ERR, component, message)
