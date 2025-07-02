@@ -1,0 +1,52 @@
+Базовый URL: http://<адрес-сервера>:<порт (сейчас это 8080)>/api/query
+
+############
+Endpoint для POST-запросов: /api/query
+
+Заголовки:
+1) Content-Type: application/json
+2) Access-Control-Allow-Origin: * (поддержка CORS)
+
+Формат POST-запроса:
+{
+  "query": "SELECT * FROM имя_таблицы WHERE условие"
+}
+
+Формат успешного ответа на POST-запрос:
+{
+  "status": "success",
+  "data": {
+    "message": "Запрос успешно выполнен."
+  }
+}
+
+Формат ошибок:
+1) 400 Bad Request
+{
+  "status": "error",
+  "error": "Ошибка разбора SQL",
+  "errors": [
+    "Подробное сообщение об ошибке 1",
+    "Подробное сообщение об ошибке 2",...
+  ]
+}#иногда список ошибок (errors) может быть пустым
+2) 500 Internal Server Error
+{
+  "status": "error",
+  "error": "Внутренняя ошибка сервера: [детали ошибки]"
+}
+
+##########
+Options-запрос на /api/query
+аргументы запроса: request, response
+
+Заголовки ответа:
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: Content-Type
+Access-Control-Allow-Methods: POST, OPTIONS
+
+
+##########
+GET-запрос на /
+Описание: Проверяет, работает ли сервер
+Ответ: Простой текст "Сервер базы данных работает! Используйте POST /api/query для отправки запросов."
