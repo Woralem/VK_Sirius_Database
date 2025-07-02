@@ -18,7 +18,7 @@ HttpServer::HttpServer() {
 }
 
 HttpServer::~HttpServer() {
-    std::cout << "HTTP Server destroyed." << std::endl;
+    std::cout << "HTTP Server destroyed." << std::endl;//
 }
 
 void HttpServer::run(int port) {
