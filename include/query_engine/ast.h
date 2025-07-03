@@ -103,7 +103,7 @@ struct IdentifierExpr : public Expression {
 
 struct BinaryExpr : public Expression {
     enum class Operator {
-        EQ, NE, LT, GT, LE, GE, AND, OR
+        EQ, NE, LT, GT, LE, GE, AND, OR, LIKE
     };
 
     Operator op;
@@ -134,7 +134,6 @@ struct AlterTableStmt : public Statement {
         RENAME_COLUMN,
         ALTER_COLUMN_TYPE
     };
-
     AlterType alterType;
     std::string tableName;
     std::string newTableName;
@@ -142,7 +141,6 @@ struct AlterTableStmt : public Statement {
     std::string newColumnName;
     std::string newDataType;
     DataType newParsedType;
-
     AlterTableStmt() : Statement(Type::ALTER_TABLE_STMT) {}
 };
 

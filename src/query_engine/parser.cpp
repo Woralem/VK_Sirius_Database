@@ -13,6 +13,7 @@ const std::unordered_map<TokenType, Parser::ParseRule> Parser::parseRules = {
     {TokenType::LEFT_PAREN, {grouping, nullptr, Precedence::NONE}},
     {TokenType::EQUALS, {nullptr, binary, Precedence::EQUALITY}},
     {TokenType::NOT_EQUALS, {nullptr, binary, Precedence::EQUALITY}},
+    {TokenType::LIKE, {nullptr, binary, Precedence::EQUALITY}},
     {TokenType::LESS_THAN, {nullptr, binary, Precedence::COMPARISON}},
     {TokenType::GREATER_THAN, {nullptr, binary, Precedence::COMPARISON}},
     {TokenType::LESS_EQUALS, {nullptr, binary, Precedence::COMPARISON}},
@@ -22,10 +23,15 @@ const std::unordered_map<TokenType, Parser::ParseRule> Parser::parseRules = {
 };
 
 const std::unordered_map<TokenType, BinaryExpr::Operator> Parser::binaryOps = {
-    {TokenType::EQUALS, BinaryExpr::Operator::EQ}, {TokenType::NOT_EQUALS, BinaryExpr::Operator::NE},
-    {TokenType::LESS_THAN, BinaryExpr::Operator::LT}, {TokenType::GREATER_THAN, BinaryExpr::Operator::GT},
-    {TokenType::LESS_EQUALS, BinaryExpr::Operator::LE}, {TokenType::GREATER_EQUALS, BinaryExpr::Operator::GE},
-    {TokenType::AND, BinaryExpr::Operator::AND}, {TokenType::OR, BinaryExpr::Operator::OR},
+    {TokenType::EQUALS, BinaryExpr::Operator::EQ},
+    {TokenType::NOT_EQUALS, BinaryExpr::Operator::NE},
+    {TokenType::LIKE, BinaryExpr::Operator::LIKE},
+    {TokenType::LESS_THAN, BinaryExpr::Operator::LT},
+    {TokenType::GREATER_THAN, BinaryExpr::Operator::GT},
+    {TokenType::LESS_EQUALS, BinaryExpr::Operator::LE},
+    {TokenType::GREATER_EQUALS, BinaryExpr::Operator::GE},
+    {TokenType::AND, BinaryExpr::Operator::AND},
+    {TokenType::OR, BinaryExpr::Operator::OR},
 };
 
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {

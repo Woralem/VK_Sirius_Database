@@ -8,6 +8,8 @@
 #include <functional>
 #include <algorithm>
 #include <chrono>
+#include <sstream>
+#include <regex>
 
 using json = nlohmann::json;
 using namespace query_engine;
@@ -79,6 +81,153 @@ private:
             return false;
         }
         return true;
+    }
+
+    bool isValidInteger(const std::string& str) {
+        if (str.empty()) return false;
+        std::regex intRegex("^[-+]?\\d+$");
+        return std::regex_match(str, intRegex);
+    }
+
+    bool isValidDouble(const std::string& str) {
+        if (str.empty()) return false;
+        std::regex doubleRegex("^[-+]?\\d*\\.?\\d+([eE][-+]?\\d+)?$");
+        return std::regex_match(str, doubleRegex);
+    }
+
+    bool isValidBoolean(const std::string& str) {
+        std::string lower = str;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        return lower == "true" || lower == "false" || lower == "1" || lower == "0" ||
+               lower == "yes" || lower == "no" || lower == "on" || lower == "off";
+    }
+
+    bool stringToBoolean(const std::string& str) {
+        std::string lower = str;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        return lower == "true" || lower == "1" || lower == "yes" || lower == "on";
+    }
+
+    json convertValue(const json& value, DataType fromType, DataType toType) {
+        if (value.is_null()) {
+            return nullptr;
+        }
+
+        try {
+            switch (toType) {
+                case DataType::INT: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return value;
+                        case DataType::DOUBLE:
+                            return static_cast<int>(std::round(value.get<double>()));
+                        case DataType::VARCHAR: {
+                            std::string str = value.get<std::string>();
+                            if (isValidInteger(str)) {
+                                return std::stoi(str);
+                            } else if (isValidDouble(str)) {
+                                return static_cast<int>(std::round(std::stod(str)));
+                            } else {
+                                std::cout << "\033[93m[WARNING]\033[0m Cannot convert '" << str << "' to INT, setting to NULL\n";
+                                return nullptr;
+                            }
+                        }
+                        case DataType::BOOLEAN:
+                            return value.get<bool>() ? 1 : 0;
+                        default:
+                            return nullptr;
+                    }
+                }
+
+                case DataType::DOUBLE: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return static_cast<double>(value.get<int>());
+                        case DataType::DOUBLE:
+                            return value;
+                        case DataType::VARCHAR: {
+                            std::string str = value.get<std::string>();
+                            if (isValidDouble(str) || isValidInteger(str)) {
+                                return std::stod(str);
+                            } else {
+                                std::cout << "\033[93m[WARNING]\033[0m Cannot convert '" << str << "' to DOUBLE, setting to NULL\n";
+                                return nullptr;
+                            }
+                        }
+                        case DataType::BOOLEAN:
+                            return value.get<bool>() ? 1.0 : 0.0;
+                        default:
+                            return nullptr;
+                    }
+                }
+
+                case DataType::VARCHAR: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return std::to_string(value.get<int>());
+                        case DataType::DOUBLE: {
+                            double d = value.get<double>();
+                            std::ostringstream oss;
+                            oss << d;
+                            return oss.str();
+                        }
+                        case DataType::VARCHAR:
+                            return value;
+                        case DataType::BOOLEAN:
+                            return value.get<bool>() ? "true" : "false";
+                        default:
+                            return value.dump();
+                    }
+                }
+
+                case DataType::BOOLEAN: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return value.get<int>() != 0;
+                        case DataType::DOUBLE:
+                            return value.get<double>() != 0.0;
+                        case DataType::VARCHAR: {
+                            std::string str = value.get<std::string>();
+                            if (isValidBoolean(str)) {
+                                return stringToBoolean(str);
+                            } else {
+                                std::cout << "\033[93m[WARNING]\033[0m Cannot convert '" << str << "' to BOOLEAN, setting to NULL\n";
+                                return nullptr;
+                            }
+                        }
+                        case DataType::BOOLEAN:
+                            return value;
+                        default:
+                            return nullptr;
+                    }
+                }
+
+                case DataType::DATE:
+                case DataType::TIMESTAMP: {
+                    if (fromType == DataType::VARCHAR) {
+                        return value;
+                    } else {
+                        return convertValue(value, fromType, DataType::VARCHAR);
+                    }
+                }
+
+                default:
+                    std::cout << "\033[91m[ERROR]\033[0m Unsupported target type: " << dataTypeToString(toType) << "\n";
+                    return nullptr;
+            }
+        } catch (const std::exception& e) {
+            std::cout << "\033[91m[ERROR]\033[0m Error converting value: " << e.what() << ", setting to NULL\n";
+            return nullptr;
+        }
+    }
+
+    DataType jsonTypeToDataType(const json& value) {
+        if (value.is_null()) return DataType::UNKNOWN_TYPE;
+        if (value.is_number_integer()) return DataType::INT;
+        if (value.is_number_float()) return DataType::DOUBLE;
+        if (value.is_string()) return DataType::VARCHAR;
+        if (value.is_boolean()) return DataType::BOOLEAN;
+        return DataType::UNKNOWN_TYPE;
     }
 
 public:
@@ -323,10 +472,14 @@ public:
 
     bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) override {
         auto it = tables.find(tableName);
-        if (it == tables.end()) return false;
+        if (it == tables.end()) {
+            std::cout << "\033[91m[ERROR]\033[0m Table '" << tableName << "' does not exist.\n";
+            return false;
+        }
 
         auto& table = it->second;
 
+        // Находим колонку
         ColumnDef* colDef = nullptr;
         for (auto& col : table.schema) {
             if (col.name == columnName) {
@@ -334,44 +487,56 @@ public:
                 break;
             }
         }
-        if (!colDef) return false;
-
-        if (!table.options.allowedTypes.empty() && !table.options.allowedTypes.count(newType)) {
+        if (!colDef) {
+            std::cout << "\033[91m[ERROR]\033[0m Column '" << columnName << "' does not exist.\n";
             return false;
         }
 
+        if (!table.options.allowedTypes.empty() && !table.options.allowedTypes.count(newType)) {
+            std::cout << "\033[91m[ERROR]\033[0m Type '" << dataTypeToString(newType) << "' is not allowed for this table.\n";
+            return false;
+        }
+
+        DataType oldType = colDef->parsedType;
+
+        std::cout << "\033[96m[INFO]\033[0m Converting column '" << columnName << "' from "
+                  << dataTypeToString(oldType) << " to " << dataTypeToString(newType) << "...\n";
+
+        int convertedCount = 0;
+        int nullCount = 0;
+        int totalCount = 0;
+
         for (auto& row : table.data) {
-            if (row.contains(columnName) && !row[columnName].is_null()) {
-                bool canConvert = false;
+            if (row.contains(columnName)) {
+                totalCount++;
+                json oldValue = row[columnName];
 
-                switch (newType) {
-                    case DataType::INT:
-                        canConvert = row[columnName].is_number();
-                        break;
-                    case DataType::DOUBLE:
-                        canConvert = row[columnName].is_number();
-                        break;
-                    case DataType::VARCHAR:
-                        canConvert = true;
-                        break;
-                    case DataType::BOOLEAN:
-                        canConvert = row[columnName].is_boolean();
-                        break;
-                    default:
-                        canConvert = false;
+                if (oldValue.is_null()) {
+                    // NULL остается NULL
+                    continue;
                 }
 
-                if (!canConvert) {
-                    std::cout << "\033[91m[VALIDATION ERROR]\033[0m Cannot convert existing data in column '"
-                             << columnName << "' to type " << dataTypeToString(newType) << ".\n";
-                    return false;
+                DataType actualOldType = jsonTypeToDataType(oldValue);
+                json newValue = convertValue(oldValue, actualOldType, newType);
+
+                if (newValue.is_null() && !oldValue.is_null()) {
+                    nullCount++;
+                } else {
+                    convertedCount++;
                 }
+
+                row[columnName] = newValue;
             }
         }
 
         // Обновляем тип в схеме
         colDef->parsedType = newType;
         colDef->dataType = dataTypeToString(newType);
+
+        std::cout << "\033[92m[SUCCESS]\033[0m Column type changed successfully!\n";
+        std::cout << "\033[96m[STATS]\033[0m Total rows: " << totalCount
+                  << ", Converted: " << convertedCount
+                  << ", Set to NULL: " << nullCount << "\n";
 
         return true;
     }

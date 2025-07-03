@@ -17,6 +17,9 @@ namespace query_engine {
         // ALTER TABLE keywords
         ALTER, RENAME, TO, COLUMN, TYPE,
 
+        // Pattern matching
+        LIKE,
+
         // New keywords for table options
         WITH, OPTIONS, TYPES, MAX_COLUMN_LENGTH,
         ADDITIONAL_CHARS, MAX_STRING_LENGTH, GC_FREQUENCY,

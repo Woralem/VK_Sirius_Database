@@ -34,6 +34,7 @@ add_executable(run_tests
         tests/test_utils.h
         tests/final_boss.cpp
         ${QUERY_ENGINE_SOURCES}
+        tests/like_tests.cpp
 )
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(run_tests PRIVATE nlohmann_json::nlohmann_json)

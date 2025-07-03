@@ -3,6 +3,7 @@
 #include <memory>
 #include <sstream>
 #include <iomanip>
+#include <regex>
 #include "query_engine/lexer.h"
 #include "query_engine/parser.h"
 #include "query_engine/executor.h"
@@ -16,6 +17,144 @@ class MockStorage : public StorageInterface {
 private:
     std::map<std::string, json> tables;
     std::map<std::string, std::vector<ColumnDef>> schemas;
+
+    bool isValidInteger(const std::string& str) {
+        if (str.empty()) return false;
+        std::regex intRegex("^[-+]?\\d+$");
+        return std::regex_match(str, intRegex);
+    }
+
+    bool isValidDouble(const std::string& str) {
+        if (str.empty()) return false;
+        std::regex doubleRegex("^[-+]?\\d*\\.?\\d+([eE][-+]?\\d+)?$");
+        return std::regex_match(str, doubleRegex);
+    }
+
+    bool isValidBoolean(const std::string& str) {
+        std::string lower = str;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        return lower == "true" || lower == "false" || lower == "1" || lower == "0" ||
+               lower == "yes" || lower == "no" || lower == "on" || lower == "off";
+    }
+
+    bool stringToBoolean(const std::string& str) {
+        std::string lower = str;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        return lower == "true" || lower == "1" || lower == "yes" || lower == "on";
+    }
+
+    json convertValue(const json& value, DataType fromType, DataType toType) {
+        if (value.is_null()) {
+            return nullptr;
+        }
+
+        try {
+            switch (toType) {
+                case DataType::INT: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return value;
+                        case DataType::DOUBLE:
+                            return static_cast<int>(std::round(value.get<double>()));
+                        case DataType::VARCHAR: {
+                            std::string str = value.get<std::string>();
+                            if (isValidInteger(str)) {
+                                return std::stoi(str);
+                            } else if (isValidDouble(str)) {
+                                return static_cast<int>(std::round(std::stod(str)));
+                            } else {
+                                LOG_WARNING("Storage", "Cannot convert '" + str + "' to INT, setting to NULL");
+                                return nullptr;
+                            }
+                        }
+                        case DataType::BOOLEAN:
+                            return value.get<bool>() ? 1 : 0;
+                        default:
+                            return nullptr;
+                    }
+                }
+
+                case DataType::DOUBLE: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return static_cast<double>(value.get<int>());
+                        case DataType::DOUBLE:
+                            return value;
+                        case DataType::VARCHAR: {
+                            std::string str = value.get<std::string>();
+                            if (isValidDouble(str) || isValidInteger(str)) {
+                                return std::stod(str);
+                            } else {
+                                LOG_WARNING("Storage", "Cannot convert '" + str + "' to DOUBLE, setting to NULL");
+                                return nullptr;
+                            }
+                        }
+                        case DataType::BOOLEAN:
+                            return value.get<bool>() ? 1.0 : 0.0;
+                        default:
+                            return nullptr;
+                    }
+                }
+
+                case DataType::VARCHAR: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return std::to_string(value.get<int>());
+                        case DataType::DOUBLE: {
+                            double d = value.get<double>();
+                            std::ostringstream oss;
+                            oss << d;
+                            return oss.str();
+                        }
+                        case DataType::VARCHAR:
+                            return value;
+                        case DataType::BOOLEAN:
+                            return value.get<bool>() ? "true" : "false";
+                        default:
+                            return value.dump();
+                    }
+                }
+
+                case DataType::BOOLEAN: {
+                    switch (fromType) {
+                        case DataType::INT:
+                            return value.get<int>() != 0;
+                        case DataType::DOUBLE:
+                            return value.get<double>() != 0.0;
+                        case DataType::VARCHAR: {
+                            std::string str = value.get<std::string>();
+                            if (isValidBoolean(str)) {
+                                return stringToBoolean(str);
+                            } else {
+                                LOG_WARNING("Storage", "Cannot convert '" + str + "' to BOOLEAN, setting to NULL");
+                                return nullptr;
+                            }
+                        }
+                        case DataType::BOOLEAN:
+                            return value;
+                        default:
+                            return nullptr;
+                    }
+                }
+
+                default:
+                    LOG_ERROR("Storage", "Unsupported target type: " + dataTypeToString(toType));
+                    return nullptr;
+            }
+        } catch (const std::exception& e) {
+            LOG_ERROR("Storage", "Error converting value: " + std::string(e.what()) + ", setting to NULL");
+            return nullptr;
+        }
+    }
+
+    DataType jsonTypeToDataType(const json& value) {
+        if (value.is_null()) return DataType::UNKNOWN_TYPE;
+        if (value.is_number_integer()) return DataType::INT;
+        if (value.is_number_float()) return DataType::DOUBLE;
+        if (value.is_string()) return DataType::VARCHAR;
+        if (value.is_boolean()) return DataType::BOOLEAN;
+        return DataType::UNKNOWN_TYPE;
+    }
 
 public:
     bool createTable(const std::string& tableName,
@@ -243,16 +382,57 @@ public:
             return false;
         }
 
-        // Обновляем схему
+        ColumnDef* colDef = nullptr;
+        DataType oldType = DataType::UNKNOWN_TYPE;
         for (auto& col : schemas[tableName]) {
             if (col.name == columnName) {
-                col.parsedType = newType;
-                col.dataType = dataTypeToString(newType);
+                colDef = &col;
+                oldType = col.parsedType;
                 break;
             }
         }
 
-        LOG_SUCCESS("Storage", "Column type changed successfully");
+        if (!colDef) {
+            LOG_ERROR("Storage", "Column '" + columnName + "' does not exist");
+            return false;
+        }
+
+        LOG_INFO("Storage", "Converting from " + dataTypeToString(oldType) + " to " + dataTypeToString(newType));
+
+        int convertedCount = 0;
+        int nullCount = 0;
+        int totalCount = 0;
+
+        for (auto& row : tables[tableName]) {
+            if (row.contains(columnName)) {
+                totalCount++;
+                json oldValue = row[columnName];
+
+                if (oldValue.is_null()) {
+                    continue;
+                }
+
+                DataType actualOldType = jsonTypeToDataType(oldValue);
+                json newValue = convertValue(oldValue, actualOldType, newType);
+
+                if (newValue.is_null() && !oldValue.is_null()) {
+                    nullCount++;
+                } else {
+                    convertedCount++;
+                }
+
+                row[columnName] = newValue;
+            }
+        }
+
+        colDef->parsedType = newType;
+        colDef->dataType = dataTypeToString(newType);
+
+        LOG_SUCCESS("Storage", "Column type changed successfully!");
+        LOG_INFO("Storage", "Total rows: " + std::to_string(totalCount) +
+                           ", Converted: " + std::to_string(convertedCount) +
+                           ", Set to NULL: " + std::to_string(nullCount));
+
         return true;
     }
 };
@@ -327,6 +507,15 @@ void printHelp() {
     std::cout << "ALTER TABLE table_name RENAME TO new_table_name\n";
     std::cout << "ALTER TABLE table_name RENAME COLUMN old_col TO new_col\n";
     std::cout << "ALTER TABLE table_name ALTER COLUMN col_name TYPE new_type\n";
+    std::cout << "\n";
+    std::cout << "\033[1;36m=== PATTERN MATCHING ===\033[0m\n";
+    std::cout << "WHERE column LIKE 'pattern'\n";
+    std::cout << "  % - matches any sequence of characters\n";
+    std::cout << "  _ - matches any single character\n";
+    std::cout << "Examples:\n";
+    std::cout << "  name LIKE 'John%'     - names starting with 'John'\n";
+    std::cout << "  email LIKE '%@gmail.com' - Gmail addresses\n";
+    std::cout << "  phone LIKE '555-___-____' - phone numbers with 555 area code\n";
     std::cout << "\n";
     std::cout << "\033[1;36m=== SPECIAL COMMANDS ===\033[0m\n";
     std::cout << "\\h or \\help - Show this help\n";

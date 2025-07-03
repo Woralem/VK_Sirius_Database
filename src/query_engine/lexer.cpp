@@ -28,6 +28,7 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::TO: return "TO";
         case TokenType::COLUMN: return "COLUMN";
         case TokenType::TYPE: return "TYPE";
+        case TokenType::LIKE: return "LIKE";
         case TokenType::WITH: return "WITH";
         case TokenType::OPTIONS: return "OPTIONS";
         case TokenType::TYPES: return "TYPES";
@@ -79,6 +80,7 @@ const std::unordered_map<std::string_view, TokenType> Lexer::keywords = {
     {"TO", TokenType::TO},
     {"COLUMN", TokenType::COLUMN},
     {"TYPE", TokenType::TYPE},
+    {"LIKE", TokenType::LIKE},
     {"WITH", TokenType::WITH},
     {"OPTIONS", TokenType::OPTIONS},
     {"TYPES", TokenType::TYPES},

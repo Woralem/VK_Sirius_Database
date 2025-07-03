@@ -1,9 +1,43 @@
 #include "query_engine/executor.h"
 #include "utils/logger.h"
-#include <sstream>
+#include <regex>
 
 namespace query_engine {
 
+    bool matchLikePattern(const std::string& text, const std::string& pattern) {
+        size_t tLen = text.length();
+        size_t pLen = pattern.length();
+        size_t tIdx = 0;
+        size_t pIdx = 0;
+        size_t tStar = std::string::npos;
+        size_t pStar = std::string::npos;
+
+        while (tIdx < tLen) {
+            if (pIdx < pLen && (pattern[pIdx] == text[tIdx] || pattern[pIdx] == '_')) {
+                tIdx++;
+                pIdx++;
+            }
+            else if (pIdx < pLen && pattern[pIdx] == '%') {
+                tStar = tIdx;
+                pStar = pIdx;
+                pIdx++;
+            }
+            else if (pStar != std::string::npos) {
+                pIdx = pStar + 1;
+                tStar++;
+                tIdx = tStar;
+            }
+            else {
+                return false;
+            }
+        }
+
+        while (pIdx < pLen && pattern[pIdx] == '%') {
+            pIdx++;
+        }
+
+        return pIdx == pLen;
+    }
 std::string astNodeTypeToString(ASTNode::Type type) {
     switch (type) {
         case ASTNode::Type::SELECT_STMT: return "SELECT";
@@ -300,9 +334,19 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
     }
 }
 
-
 // Helper function for type-aware value comparison
 bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
+    if (op == BinaryExpr::Operator::LIKE) {
+        if (!std::holds_alternative<std::string>(left) || !std::holds_alternative<std::string>(right)) {
+            return false;
+        }
+
+        const std::string& text = std::get<std::string>(left);
+        const std::string& pattern = std::get<std::string>(right);
+
+        return matchLikePattern(text, pattern);
+    }
+
     bool leftIsNumeric = std::holds_alternative<int>(left) || std::holds_alternative<double>(left);
     bool rightIsNumeric = std::holds_alternative<int>(right) || std::holds_alternative<double>(right);
 
@@ -333,7 +377,6 @@ bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator o
     }
 }
 
-
 bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json& row) {
     if (!expr) {
         return true;
@@ -354,7 +397,7 @@ bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json&
             return evaluatePredicate(binExpr->right.get(), row);
         }
 
-        // Comparison operators
+        // Comparison operators (including LIKE)
         Value leftVal = evaluateExpression(binExpr->left.get(), row);
         Value rightVal = evaluateExpression(binExpr->right.get(), row);
 
