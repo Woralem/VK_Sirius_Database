@@ -95,7 +95,8 @@ void Parser::synchronize() {
         if (previous().type == TokenType::SEMICOLON) return;
         switch (peek().type) {
             case TokenType::CREATE: case TokenType::SELECT: case TokenType::INSERT:
-            case TokenType::UPDATE_KEYWORD: case TokenType::DELETE_KEYWORD: case TokenType::END_OF_FILE:
+            case TokenType::UPDATE_KEYWORD: case TokenType::DELETE_KEYWORD: case TokenType::ALTER:
+            case TokenType::END_OF_FILE:
                 return;
         }
         advance();
@@ -108,6 +109,7 @@ ASTNodePtr Parser::statement() {
     if (check(TokenType::UPDATE_KEYWORD)) return updateStatement();
     if (check(TokenType::DELETE_KEYWORD)) return deleteStatement();
     if (check(TokenType::CREATE)) return createTableStatement();
+    if (check(TokenType::ALTER)) return alterTableStatement();
 
     error("Expected a statement (SELECT, INSERT, etc.) but got '" + peek().lexeme + "'");
     throw std::runtime_error("Parsing error: Invalid statement start");
@@ -242,6 +244,42 @@ std::unique_ptr<CreateTableStmt> Parser::createTableStatement() {
         stmt->options = parseTableOptions();
         consume(TokenType::RIGHT_PAREN, "Expected ')'");
     }
+    return stmt;
+}
+
+std::unique_ptr<AlterTableStmt> Parser::alterTableStatement() {
+    consume(TokenType::ALTER, "Expected ALTER");
+    consume(TokenType::TABLE, "Expected TABLE after ALTER");
+
+    auto stmt = std::make_unique<AlterTableStmt>();
+    stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
+
+    if (match({TokenType::RENAME})) {
+        if (match({TokenType::TO})) {
+            // ALTER TABLE table_name RENAME TO new_table_name
+            stmt->alterType = AlterTableStmt::AlterType::RENAME_TABLE;
+            stmt->newTableName = consume(TokenType::IDENTIFIER, "Expected new table name").lexeme;
+        } else if (match({TokenType::COLUMN})) {
+            // ALTER TABLE table_name RENAME COLUMN old_name TO new_name
+            stmt->alterType = AlterTableStmt::AlterType::RENAME_COLUMN;
+            stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
+            consume(TokenType::TO, "Expected TO after column name");
+            stmt->newColumnName = consume(TokenType::IDENTIFIER, "Expected new column name").lexeme;
+        } else {
+            error("Expected TO or COLUMN after RENAME");
+        }
+    } else if (match({TokenType::ALTER})) {
+        // ALTER TABLE table_name ALTER COLUMN column_name TYPE new_type
+        consume(TokenType::COLUMN, "Expected COLUMN after ALTER");
+        stmt->alterType = AlterTableStmt::AlterType::ALTER_COLUMN_TYPE;
+        stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
+        consume(TokenType::TYPE, "Expected TYPE after column name");
+        stmt->newDataType = consume(TokenType::IDENTIFIER, "Expected new data type").lexeme;
+        stmt->newParsedType = parseDataType(stmt->newDataType);
+    } else {
+        error("Expected RENAME or ALTER after table name");
+    }
+
     return stmt;
 }
 

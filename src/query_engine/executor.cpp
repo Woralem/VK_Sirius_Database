@@ -11,6 +11,7 @@ std::string astNodeTypeToString(ASTNode::Type type) {
         case ASTNode::Type::UPDATE_STMT: return "UPDATE";
         case ASTNode::Type::DELETE_STMT: return "DELETE";
         case ASTNode::Type::CREATE_TABLE_STMT: return "CREATE TABLE";
+        case ASTNode::Type::ALTER_TABLE_STMT: return "ALTER TABLE";
         default: return "UNKNOWN";
     }
 }
@@ -50,6 +51,9 @@ nlohmann::json QueryExecutor::execute(const ASTNodePtr& ast) {
                 break;
             case ASTNode::Type::CREATE_TABLE_STMT:
                 result = executeCreateTable(static_cast<CreateTableStmt*>(ast.get()));
+                break;
+            case ASTNode::Type::ALTER_TABLE_STMT:
+                result = executeAlterTable(static_cast<AlterTableStmt*>(ast.get()));
                 break;
             default:
                 if (enableLogging) LOG_ERROR("Executor", "Unknown statement type");
@@ -201,6 +205,55 @@ nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
             LOG_SUCCESS("Executor", "Table '" + stmt->tableName + "' created successfully");
         } else {
             LOG_ERROR("Executor", "Failed to create table '" + stmt->tableName + "'");
+        }
+    }
+
+    return result;
+}
+
+nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
+    if (enableLogging) {
+        LOG_INFO("Executor", "Executing ALTER TABLE on: " + stmt->tableName);
+    }
+
+    nlohmann::json result;
+    bool success = false;
+    std::string message;
+
+    switch (stmt->alterType) {
+        case AlterTableStmt::AlterType::RENAME_TABLE:
+            if (enableLogging) {
+                LOG_DEBUG("Executor", "Renaming table to: " + stmt->newTableName);
+            }
+            success = storage->renameTable(stmt->tableName, stmt->newTableName);
+            message = success ? "Table renamed successfully" : "Failed to rename table";
+            break;
+
+        case AlterTableStmt::AlterType::RENAME_COLUMN:
+            if (enableLogging) {
+                LOG_DEBUG("Executor", "Renaming column '" + stmt->columnName + "' to '" + stmt->newColumnName + "'");
+            }
+            success = storage->renameColumn(stmt->tableName, stmt->columnName, stmt->newColumnName);
+            message = success ? "Column renamed successfully" : "Failed to rename column";
+            break;
+
+        case AlterTableStmt::AlterType::ALTER_COLUMN_TYPE:
+            if (enableLogging) {
+                LOG_DEBUG("Executor", "Changing column '" + stmt->columnName + "' type to: " + stmt->newDataType);
+            }
+            success = storage->alterColumnType(stmt->tableName, stmt->columnName, stmt->newParsedType);
+            message = success ? "Column type changed successfully" : "Failed to change column type";
+            break;
+    }
+
+    result["status"] = success ? "success" : "error";
+    result["message"] = message;
+
+    if (enableLogging) {
+        if (success) {
+            LOG_SUCCESS("Executor", message);
+        } else {
+            LOG_ERROR("Executor", message);
         }
     }
 

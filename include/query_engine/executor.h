@@ -24,6 +24,11 @@ struct StorageInterface {
                           std::function<bool(const nlohmann::json&)> predicate) = 0;
     virtual int deleteRows(const std::string& tableName,
                           std::function<bool(const nlohmann::json&)> predicate) = 0;
+
+    // ALTER TABLE operations
+    virtual bool renameTable(const std::string& oldName, const std::string& newName) = 0;
+    virtual bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) = 0;
+    virtual bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) = 0;
 };
 
 class QueryExecutor {
@@ -43,6 +48,7 @@ protected:
     nlohmann::json executeUpdate(const UpdateStmt* stmt);
     nlohmann::json executeDelete(const DeleteStmt* stmt);
     nlohmann::json executeCreateTable(const CreateTableStmt* stmt);
+    nlohmann::json executeAlterTable(const AlterTableStmt* stmt);
 
     // Evaluate expressions
     Value evaluateExpression(const ASTNode* expr, const nlohmann::json& row);

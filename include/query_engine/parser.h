@@ -67,6 +67,7 @@ private:
     std::unique_ptr<UpdateStmt> updateStatement();
     std::unique_ptr<DeleteStmt> deleteStatement();
     std::unique_ptr<CreateTableStmt> createTableStatement();
+    std::unique_ptr<AlterTableStmt> alterTableStatement();
 
     // Expression parsing
     ASTNodePtr expression();

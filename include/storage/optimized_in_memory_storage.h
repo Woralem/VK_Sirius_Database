@@ -258,6 +258,124 @@ public:
         }
         return result;
     }
+
+    // ALTER TABLE operations
+    bool renameTable(const std::string& oldName, const std::string& newName) override {
+        auto it = tables.find(oldName);
+        if (it == tables.end()) return false;
+        if (tables.count(newName) > 0) return false; // новое имя уже существует
+
+        auto node = tables.extract(it);
+        node.key() = newName;
+        tables.insert(std::move(node));
+        return true;
+    }
+
+    bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) override {
+        auto it = tables.find(tableName);
+        if (it == tables.end()) return false;
+
+        auto& table = it->second;
+
+        // Проверяем, существует ли старая колонка
+        bool columnExists = false;
+        for (auto& col : table.schema) {
+            if (col.name == oldColumnName) {
+                columnExists = true;
+                break;
+            }
+        }
+        if (!columnExists) return false;
+
+        // Проверяем, что новое имя не занято
+        for (const auto& col : table.schema) {
+            if (col.name == newColumnName) return false;
+        }
+
+        // Проверяем валидность нового имени
+        if (!validateColumnName(newColumnName, table.options)) return false;
+
+        // Обновляем схему
+        for (auto& col : table.schema) {
+            if (col.name == oldColumnName) {
+                col.name = newColumnName;
+                break;
+            }
+        }
+
+        // Обновляем данные
+        for (auto& row : table.data) {
+            if (row.contains(oldColumnName)) {
+                row[newColumnName] = row[oldColumnName];
+                row.erase(oldColumnName);
+            }
+        }
+
+        // Обновляем индексы
+        if (table.indexes.count(oldColumnName)) {
+            auto node = table.indexes.extract(oldColumnName);
+            node.key() = newColumnName;
+            table.indexes.insert(std::move(node));
+        }
+
+        return true;
+    }
+
+    bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) override {
+        auto it = tables.find(tableName);
+        if (it == tables.end()) return false;
+
+        auto& table = it->second;
+
+        ColumnDef* colDef = nullptr;
+        for (auto& col : table.schema) {
+            if (col.name == columnName) {
+                colDef = &col;
+                break;
+            }
+        }
+        if (!colDef) return false;
+
+        if (!table.options.allowedTypes.empty() && !table.options.allowedTypes.count(newType)) {
+            return false;
+        }
+
+        for (auto& row : table.data) {
+            if (row.contains(columnName) && !row[columnName].is_null()) {
+                bool canConvert = false;
+
+                switch (newType) {
+                    case DataType::INT:
+                        canConvert = row[columnName].is_number();
+                        break;
+                    case DataType::DOUBLE:
+                        canConvert = row[columnName].is_number();
+                        break;
+                    case DataType::VARCHAR:
+                        canConvert = true;
+                        break;
+                    case DataType::BOOLEAN:
+                        canConvert = row[columnName].is_boolean();
+                        break;
+                    default:
+                        canConvert = false;
+                }
+
+                if (!canConvert) {
+                    std::cout << "\033[91m[VALIDATION ERROR]\033[0m Cannot convert existing data in column '"
+                             << columnName << "' to type " << dataTypeToString(newType) << ".\n";
+                    return false;
+                }
+            }
+        }
+
+        // Обновляем тип в схеме
+        colDef->parsedType = newType;
+        colDef->dataType = dataTypeToString(newType);
+
+        return true;
+    }
+
 private:
     void performGarbageCollection(Table& table) {
         for (auto& [colName, index] : table.indexes) {
