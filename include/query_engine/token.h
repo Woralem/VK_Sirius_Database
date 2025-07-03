@@ -13,6 +13,11 @@ namespace query_engine {
         DELETE_KEYWORD,
         CREATE, TABLE,
         AND, OR, NOT, NULL_TOKEN,
+        
+        // New keywords for table options
+        WITH, OPTIONS, TYPES, MAX_COLUMN_LENGTH, 
+        ADDITIONAL_CHARS, MAX_STRING_LENGTH, GC_FREQUENCY,
+        DAYS,
 
         // Identifiers and Literals
         IDENTIFIER, STRING_LITERAL, NUMBER_LITERAL,
@@ -22,6 +27,7 @@ namespace query_engine {
 
         // Delimiters
         LEFT_PAREN, RIGHT_PAREN, COMMA, SEMICOLON, ASTERISK,
+        LEFT_BRACKET, RIGHT_BRACKET,
 
         // Special
         END_OF_FILE, UNKNOWN

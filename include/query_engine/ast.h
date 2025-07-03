@@ -4,6 +4,8 @@
 #include <string>
 #include <variant>
 #include <ostream>
+#include <set>
+#include <algorithm>
 
 namespace query_engine {
 
@@ -13,6 +15,41 @@ using ASTNodePtr = std::unique_ptr<ASTNode>;
 
 // Value types
 using Value = std::variant<std::monostate, int, double, std::string, bool>;
+
+// Data types that can be stored in table
+enum class DataType {
+    INT,
+    DOUBLE,
+    VARCHAR,
+    BOOLEAN,
+    DATE,
+    TIMESTAMP,
+    UNKNOWN_TYPE
+};
+
+// Table creation options
+struct TableOptions {
+    // Allowed data types for this table
+    std::set<DataType> allowedTypes;
+
+    // Maximum column name length (default: 16, max: 64)
+    size_t maxColumnNameLength = 16;
+
+    // Additional allowed characters for column names
+    std::set<char> additionalNameChars;
+
+    // Maximum string length (default: 65536, max: 2^40)
+    size_t maxStringLength = 65536;
+
+    // Garbage collection frequency in days (default: 7, range: 1-365)
+    int gcFrequencyDays = 7;
+
+    bool validate() const {
+        return maxColumnNameLength > 0 && maxColumnNameLength <= 64 &&
+               maxStringLength > 0 && maxStringLength <= (1ULL << 40) &&
+               gcFrequencyDays >= 1 && gcFrequencyDays <= 365;
+    }
+};
 
 // Base AST Node
 struct ASTNode {
@@ -24,7 +61,7 @@ struct ASTNode {
         BINARY_EXPR, UNARY_EXPR, LITERAL_EXPR, IDENTIFIER_EXPR,
 
         // Others
-        COLUMN_DEF, TABLE_REF, COLUMN_REF, VALUE_LIST
+        COLUMN_DEF, TABLE_REF, COLUMN_REF, VALUE_LIST, TABLE_OPTIONS
     };
 
     Type type;
@@ -38,8 +75,10 @@ protected:
 struct ColumnDef : public ASTNode {
     std::string name;
     std::string dataType;
+    DataType parsedType = DataType::VARCHAR; // Default type
     bool notNull = false;
     bool primaryKey = false;
+    size_t maxLength = 0; // For VARCHAR types
 
     ColumnDef() : ASTNode(Type::COLUMN_DEF) {}
 };
@@ -84,6 +123,7 @@ struct Statement : public ASTNode {
 struct CreateTableStmt : public Statement {
     std::string tableName;
     std::vector<std::unique_ptr<ColumnDef>> columns;
+    TableOptions options;
 
     CreateTableStmt() : Statement(Type::CREATE_TABLE_STMT) {}
 };
@@ -119,6 +159,39 @@ struct DeleteStmt : public Statement {
     DeleteStmt() : Statement(Type::DELETE_STMT) {}
 };
 
+// Helper functions
+inline std::string dataTypeToString(DataType type) {
+    switch (type) {
+        case DataType::INT: return "INT";
+        case DataType::DOUBLE: return "DOUBLE";
+        case DataType::VARCHAR: return "VARCHAR";
+        case DataType::BOOLEAN: return "BOOLEAN";
+        case DataType::DATE: return "DATE";
+        case DataType::TIMESTAMP: return "TIMESTAMP";
+        case DataType::UNKNOWN_TYPE: return "UNKNOWN_TYPE";
+        default: return "UNKNOWN";
+    }
+}
+
+inline std::ostream& operator<<(std::ostream& os, const query_engine::DataType& type) {
+    os << dataTypeToString(type);
+    return os;
+}
+
+inline DataType parseDataType(const std::string& typeStr) {
+    std::string upper = typeStr;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+
+    if (upper == "INT" || upper == "INTEGER") return DataType::INT;
+    if (upper == "DOUBLE" || upper == "FLOAT" || upper == "REAL") return DataType::DOUBLE;
+    if (upper == "VARCHAR" || upper == "STRING" || upper == "TEXT") return DataType::VARCHAR;
+    if (upper == "BOOLEAN" || upper == "BOOL") return DataType::BOOLEAN;
+    if (upper == "DATE") return DataType::DATE;
+    if (upper == "TIMESTAMP" || upper == "DATETIME") return DataType::TIMESTAMP;
+
+    return DataType::UNKNOWN_TYPE;
+}
+
 inline std::ostream& operator<<(std::ostream& os, const ASTNode::Type& type) {
     switch (type) {
         case ASTNode::Type::SELECT_STMT:        os << "SELECT_STMT"; break;
@@ -134,6 +207,7 @@ inline std::ostream& operator<<(std::ostream& os, const ASTNode::Type& type) {
         case ASTNode::Type::TABLE_REF:          os << "TABLE_REF"; break;
         case ASTNode::Type::COLUMN_REF:         os << "COLUMN_REF"; break;
         case ASTNode::Type::VALUE_LIST:         os << "VALUE_LIST"; break;
+        case ASTNode::Type::TABLE_OPTIONS:      os << "TABLE_OPTIONS"; break;
         default: os << "UNKNOWN_AST_NODE(" << static_cast<int>(type) << ")"; break;
     }
     return os;

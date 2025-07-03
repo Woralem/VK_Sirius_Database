@@ -11,7 +11,8 @@ struct StorageInterface {
     virtual ~StorageInterface() = default;
 
     virtual bool createTable(const std::string& tableName,
-                           const std::vector<ColumnDef*>& columns) = 0;
+                           const std::vector<ColumnDef*>& columns,
+                           const TableOptions& options = TableOptions()) = 0;
     virtual bool insertRow(const std::string& tableName,
                           const std::vector<std::string>& columns,
                           const std::vector<Value>& values) = 0;

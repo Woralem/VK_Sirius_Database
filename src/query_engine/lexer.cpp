@@ -5,6 +5,7 @@
 namespace query_engine {
 
 thread_local char Lexer::upperBuffer[256];
+
 std::string tokenTypeToString(TokenType type) {
     switch (type) {
         case TokenType::SELECT: return "SELECT";
@@ -22,6 +23,14 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::OR: return "OR";
         case TokenType::NOT: return "NOT";
         case TokenType::NULL_TOKEN: return "NULL";
+        case TokenType::WITH: return "WITH";
+        case TokenType::OPTIONS: return "OPTIONS";
+        case TokenType::TYPES: return "TYPES";
+        case TokenType::MAX_COLUMN_LENGTH: return "MAX_COLUMN_LENGTH";
+        case TokenType::ADDITIONAL_CHARS: return "ADDITIONAL_CHARS";
+        case TokenType::MAX_STRING_LENGTH: return "MAX_STRING_LENGTH";
+        case TokenType::GC_FREQUENCY: return "GC_FREQUENCY";
+        case TokenType::DAYS: return "DAYS";
         case TokenType::IDENTIFIER: return "IDENTIFIER";
         case TokenType::STRING_LITERAL: return "STRING_LITERAL";
         case TokenType::NUMBER_LITERAL: return "NUMBER_LITERAL";
@@ -36,11 +45,14 @@ std::string tokenTypeToString(TokenType type) {
         case TokenType::COMMA: return "COMMA";
         case TokenType::SEMICOLON: return "SEMICOLON";
         case TokenType::ASTERISK: return "ASTERISK";
+        case TokenType::LEFT_BRACKET: return "LEFT_BRACKET";
+        case TokenType::RIGHT_BRACKET: return "RIGHT_BRACKET";
         case TokenType::END_OF_FILE: return "EOF";
         case TokenType::UNKNOWN: return "UNKNOWN";
         default: return "?";
     }
 }
+
 const std::unordered_map<std::string_view, TokenType> Lexer::keywords = {
     {"SELECT", TokenType::SELECT},
     {"FROM", TokenType::FROM},
@@ -56,7 +68,15 @@ const std::unordered_map<std::string_view, TokenType> Lexer::keywords = {
     {"AND", TokenType::AND},
     {"OR", TokenType::OR},
     {"NOT", TokenType::NOT},
-    {"NULL", TokenType::NULL_TOKEN}
+    {"NULL", TokenType::NULL_TOKEN},
+    {"WITH", TokenType::WITH},
+    {"OPTIONS", TokenType::OPTIONS},
+    {"TYPES", TokenType::TYPES},
+    {"MAX_COLUMN_LENGTH", TokenType::MAX_COLUMN_LENGTH},
+    {"ADDITIONAL_CHARS", TokenType::ADDITIONAL_CHARS},
+    {"MAX_STRING_LENGTH", TokenType::MAX_STRING_LENGTH},
+    {"GC_FREQUENCY", TokenType::GC_FREQUENCY},
+    {"DAYS", TokenType::DAYS}
 };
 
 Lexer::Lexer(const std::string& source)
@@ -137,6 +157,8 @@ Token Lexer::scanToken() {
         case ',': return makeToken(TokenType::COMMA, ",");
         case ';': return makeToken(TokenType::SEMICOLON, ";");
         case '*': return makeToken(TokenType::ASTERISK, "*");
+        case '[': return makeToken(TokenType::LEFT_BRACKET, "[");
+        case ']': return makeToken(TokenType::RIGHT_BRACKET, "]");
 
         case '=': return makeToken(TokenType::EQUALS, "=");
         case '<':

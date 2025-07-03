@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <set>
 
 namespace query_engine {
 
@@ -22,7 +23,8 @@ private:
     size_t current = 0;
     std::vector<std::string> errors;
 
-    // Optimized precedence parsing
+    std::vector<ASTNodePtr> parse_all();
+
     enum class Precedence {
         NONE = 0,
         OR,
@@ -81,6 +83,11 @@ private:
     std::vector<std::string> parseColumnList();
     std::vector<Value> parseValueList();
     std::unique_ptr<ColumnDef> parseColumnDef();
+
+    // Parse table options
+    TableOptions parseTableOptions();
+    std::set<DataType> parseDataTypeList();
+    std::set<char> parseCharacterList();
 };
 
 }

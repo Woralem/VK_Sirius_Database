@@ -160,6 +160,27 @@ nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
     if (enableLogging) {
         LOG_INFO("Executor", "Executing CREATE TABLE: " + stmt->tableName);
         LOG_DEBUG("Executor", "Creating table with " + std::to_string(stmt->columns.size()) + " column(s)");
+
+        // Log table options
+        if (!stmt->options.allowedTypes.empty()) {
+            std::string typesStr = "Allowed types: ";
+            for (auto type : stmt->options.allowedTypes) {
+                typesStr += dataTypeToString(type) + " ";
+            }
+            LOG_DEBUG("Executor", typesStr);
+        }
+        LOG_DEBUG("Executor", "Max column name length: " + std::to_string(stmt->options.maxColumnNameLength));
+        LOG_DEBUG("Executor", "Max string length: " + std::to_string(stmt->options.maxStringLength));
+        LOG_DEBUG("Executor", "GC frequency: " + std::to_string(stmt->options.gcFrequencyDays) + " days");
+    }
+
+    // Validate options
+    if (!stmt->options.validate()) {
+        LOG_ERROR("Executor", "Invalid table options");
+        nlohmann::json result;
+        result["status"] = "error";
+        result["message"] = "Invalid table options";
+        return result;
     }
 
     std::vector<ColumnDef*> columnPtrs;
@@ -169,7 +190,7 @@ nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
         columnPtrs.push_back(col.get());
     }
 
-    bool success = storage->createTable(stmt->tableName, columnPtrs);
+    bool success = storage->createTable(stmt->tableName, columnPtrs, stmt->options);
 
     nlohmann::json result;
     result["status"] = success ? "success" : "error";
@@ -201,7 +222,7 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
             auto* id = static_cast<const IdentifierExpr*>(expr);
 
             if (row.contains(id->name)) {
-                auto& val = row[id->name];
+                const auto& val = row[id->name];
                 if (val.is_number_integer()) {
                     return val.get<int>();
                 }
@@ -210,6 +231,9 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
                 }
                 if (val.is_string()) {
                     return val.get<std::string>();
+                }
+                if (val.is_boolean()) {
+                    return val.get<bool>();
                 }
                 if (val.is_null()) {
                     return std::monostate{};
@@ -222,6 +246,40 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
             return std::monostate{};
     }
 }
+
+
+// Helper function for type-aware value comparison
+bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
+    bool leftIsNumeric = std::holds_alternative<int>(left) || std::holds_alternative<double>(left);
+    bool rightIsNumeric = std::holds_alternative<int>(right) || std::holds_alternative<double>(right);
+
+    if (leftIsNumeric && rightIsNumeric) {
+        double leftDouble = std::holds_alternative<int>(left) ? static_cast<double>(std::get<int>(left)) : std::get<double>(left);
+        double rightDouble = std::holds_alternative<int>(right) ? static_cast<double>(std::get<int>(right)) : std::get<double>(right);
+
+        switch (op) {
+            case BinaryExpr::Operator::EQ: return leftDouble == rightDouble;
+            case BinaryExpr::Operator::NE: return leftDouble != rightDouble;
+            case BinaryExpr::Operator::LT: return leftDouble < rightDouble;
+            case BinaryExpr::Operator::GT: return leftDouble > rightDouble;
+            case BinaryExpr::Operator::LE: return leftDouble <= rightDouble;
+            case BinaryExpr::Operator::GE: return leftDouble >= rightDouble;
+            default: return false;
+        }
+    }
+
+    // Default strict comparison for non-numeric types (string, bool, etc.)
+    switch (op) {
+        case BinaryExpr::Operator::EQ: return left == right;
+        case BinaryExpr::Operator::NE: return left != right;
+        case BinaryExpr::Operator::LT: return left < right;
+        case BinaryExpr::Operator::GT: return left > right;
+        case BinaryExpr::Operator::LE: return left <= right;
+        case BinaryExpr::Operator::GE: return left >= right;
+        default: return false;
+    }
+}
+
 
 bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json& row) {
     if (!expr) {
@@ -247,15 +305,7 @@ bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json&
         Value leftVal = evaluateExpression(binExpr->left.get(), row);
         Value rightVal = evaluateExpression(binExpr->right.get(), row);
 
-        switch (binExpr->op) {
-            case BinaryExpr::Operator::EQ: return leftVal == rightVal;
-            case BinaryExpr::Operator::NE: return leftVal != rightVal;
-            case BinaryExpr::Operator::LT: return leftVal < rightVal;
-            case BinaryExpr::Operator::GT: return leftVal > rightVal;
-            case BinaryExpr::Operator::LE: return leftVal <= rightVal;
-            case BinaryExpr::Operator::GE: return leftVal >= rightVal;
-            default: return false;
-        }
+        return compareValues(leftVal, rightVal, binExpr->op);
     }
 
     return true;

@@ -7,6 +7,7 @@
 #include <vector>
 #include <functional>
 #include <algorithm>
+#include <chrono>
 
 using json = nlohmann::json;
 using namespace query_engine;
@@ -16,7 +17,9 @@ private:
     struct Table {
         json data = json::array();
         std::vector<ColumnDef> schema;
+        TableOptions options;
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<size_t>>> indexes;
+        std::chrono::system_clock::time_point lastGC;
     };
 
     std::unordered_map<std::string, Table> tables;
@@ -41,196 +44,227 @@ private:
         return value.dump();
     }
 
-public:
-    bool createTable(const std::string& tableName,
-                    const std::vector<ColumnDef*>& columns) override {
-        if (tables.count(tableName)) {
+    bool validateColumnName(const std::string& name, const TableOptions& options) {
+        if (name.length() > options.maxColumnNameLength) return false;
+        for (char c : name) {
+            if (std::isalnum(c) || c == '_' || options.additionalNameChars.count(c)) continue;
             return false;
         }
-
-        auto& table = tables[tableName];
-        table.schema.reserve(columns.size());
-
-        for (auto* col : columns) {
-            table.schema.push_back(*col);
-            table.indexes[col->name];
-        }
-
         return true;
     }
 
-    bool insertRow(const std::string& tableName,
-                  const std::vector<std::string>& columns,
-                  const std::vector<Value>& values) override {
-        auto it = tables.find(tableName);
-        if (it == tables.end()) {
+    const ColumnDef* getColumnDef(const Table& table, const std::string& colName) {
+        for (const auto& col : table.schema) {
+            if (col.name == colName) return &col;
+        }
+        return nullptr;
+    }
+
+    bool validateValueForColumn(const Value& value, const ColumnDef& colDef) {
+        if (colDef.notNull && std::holds_alternative<std::monostate>(value)) {
+            std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name << "' cannot be null.\n";
             return false;
         }
+        if (std::holds_alternative<std::monostate>(value)) return true;
+        bool type_ok = false;
+        switch (colDef.parsedType) {
+            case DataType::INT:       type_ok = std::holds_alternative<int>(value); break;
+            case DataType::DOUBLE:    type_ok = std::holds_alternative<double>(value) || std::holds_alternative<int>(value); break;
+            case DataType::VARCHAR:   type_ok = std::holds_alternative<std::string>(value); break;
+            case DataType::BOOLEAN:   type_ok = std::holds_alternative<bool>(value); break;
+            default: type_ok = true; break;
+        }
+        if (!type_ok) {
+            std::cout << "\033[91m[VALIDATION ERROR]\033[0m Type mismatch for column '" << colDef.name << "'.\n";
+            return false;
+        }
+        return true;
+    }
 
-        auto& table = it->second;
-        json row;
+public:
+    bool createTable(const std::string& tableName, const std::vector<ColumnDef*>& columns, const TableOptions& options = TableOptions()) override {
+        if (tables.count(tableName)) return false;
+        auto& table = tables[tableName];
+        table.options = options;
+        table.lastGC = std::chrono::system_clock::now();
+        for (auto* col : columns) {
+            if (col->parsedType == DataType::UNKNOWN_TYPE || !validateColumnName(col->name, options) ||
+                (!options.allowedTypes.empty() && !options.allowedTypes.count(col->parsedType))) {
+                tables.erase(tableName);
+                return false;
+            }
+            table.schema.push_back(*col);
+            if(col->primaryKey) table.indexes[col->name];
+        }
+        return true;
+    }
 
+    bool insertRow(const std::string& tableName, const std::vector<std::string>& columns, const std::vector<Value>& values) override {
+        auto table_it = tables.find(tableName);
+        if (table_it == tables.end()) return false;
+        auto& table = table_it->second;
+
+        std::vector<std::pair<std::string, Value>> valueMap;
         if (columns.empty()) {
-            if (values.size() != table.schema.size()) {
-                return false;
-            }
-            for (size_t i = 0; i < values.size(); i++) {
-                const auto& colName = table.schema[i].name;
-                setJsonValue(row, colName, values[i]);
-            }
+            if (values.size() != table.schema.size()) return false;
+            for (size_t i = 0; i < values.size(); ++i) valueMap.emplace_back(table.schema[i].name, values[i]);
         } else {
-            if (columns.size() != values.size()) {
-                return false;
-            }
-            for (size_t i = 0; i < columns.size(); i++) {
-                setJsonValue(row, columns[i], values[i]);
+            if (columns.size() != values.size()) return false;
+            for (size_t i = 0; i < columns.size(); ++i) valueMap.emplace_back(columns[i], values[i]);
+        }
+
+        for (const auto& [colName, value] : valueMap) {
+            const ColumnDef* colDef = getColumnDef(table, colName);
+            if (!colDef || (std::holds_alternative<std::string>(value) && std::get<std::string>(value).length() > table.options.maxStringLength) || !validateValueForColumn(value, *colDef)) return false;
+            if (colDef->primaryKey) {
+                json tempJson; setJsonValue(tempJson, colName, value);
+                if(table.indexes.count(colName) && table.indexes.at(colName).count(valueToIndexKey(tempJson[colName]))) return false;
             }
         }
 
+        json row;
+        for (const auto& [colName, value] : valueMap) setJsonValue(row, colName, value);
         size_t rowIndex = table.data.size();
         for (auto& [colName, index] : table.indexes) {
-            if (row.contains(colName)) {
-                std::string key = valueToIndexKey(row[colName]);
-                index[key].push_back(rowIndex);
-            }
+            if (row.contains(colName)) index[valueToIndexKey(row[colName])].push_back(rowIndex);
         }
-
         table.data.push_back(std::move(row));
         return true;
     }
 
-    json selectRows(const std::string& tableName,
-                   const std::vector<std::string>& columns,
-                   std::function<bool(const json&)> predicate) override {
+    int updateRows(const std::string& tableName, const std::vector<std::pair<std::string, Value>>& assignments, std::function<bool(const json&)> predicate) override {
+        auto it = tables.find(tableName);
+        if (it == tables.end()) return 0;
+        auto& table = it->second;
+        int updatedCount = 0;
+        std::vector<size_t> rowsToUpdate;
+        for (size_t i = 0; i < table.data.size(); ++i) if (predicate(table.data[i])) rowsToUpdate.push_back(i);
+
+        for (size_t i : rowsToUpdate) {
+            bool valid = true;
+            for (const auto& [colName, value] : assignments) {
+                const ColumnDef* colDef = getColumnDef(table, colName);
+                if (!colDef || !validateValueForColumn(value, *colDef)) { valid = false; break; }
+                if (std::holds_alternative<std::string>(value) && std::get<std::string>(value).length() > table.options.maxStringLength) { valid = false; break; }
+                if (colDef->primaryKey) {
+                    json tempJson; setJsonValue(tempJson, colName, value);
+                    auto key_to_check = valueToIndexKey(tempJson[colName]);
+                    if(table.indexes.at(colName).count(key_to_check) && !table.indexes.at(colName).at(key_to_check).empty() && table.indexes.at(colName).at(key_to_check)[0] != i) {
+                        std::cout << "\033[91m[VALIDATION ERROR]\033[0m UPDATE violates PRIMARY KEY constraint for key '" << colName << "'.\n";
+                        valid = false; break;
+                    }
+                }
+            }
+            if (!valid) continue;
+            auto& row = table.data[i];
+            for (const auto& [col, val] : assignments) {
+                if (table.indexes.count(col) && row.contains(col)) {
+                    auto& oldIndex = table.indexes[col][valueToIndexKey(row[col])];
+                    oldIndex.erase(std::remove(oldIndex.begin(), oldIndex.end(), i), oldIndex.end());
+                }
+            }
+            for (const auto& [col, val] : assignments) {
+                setJsonValue(row, col, val);
+                if (table.indexes.count(col)) table.indexes[col][valueToIndexKey(row[col])].push_back(i);
+            }
+            updatedCount++;
+        }
+        return updatedCount;
+    }
+
+    int deleteRows(const std::string& tableName, std::function<bool(const json&)> predicate) override {
+        auto it = tables.find(tableName);
+        if (it == tables.end()) return 0;
+        auto& table = it->second;
+
+        std::vector<size_t> toDelete;
+        for (size_t i = 0; i < table.data.size(); ++i) {
+            if (predicate(table.data[i])) {
+                toDelete.push_back(i);
+            }
+        }
+        if (toDelete.empty()) return 0;
+
+        std::sort(toDelete.rbegin(), toDelete.rend());
+
+        for (size_t idx_to_delete : toDelete) {
+            size_t last_idx = table.data.size() - 1;
+
+            if (idx_to_delete != last_idx) {
+                const auto& row_to_move = table.data.back();
+                for (auto& [colName, index] : table.indexes) {
+                    if (row_to_move.contains(colName)) {
+                        auto key = valueToIndexKey(row_to_move[colName]);
+                        if (index.count(key)) {
+                            auto& indices = index[key];
+                            for (size_t& idx_ref : indices) {
+                                if (idx_ref == last_idx) {
+                                    idx_ref = idx_to_delete;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            const auto& row_to_delete = table.data[idx_to_delete];
+            for (auto& [colName, index] : table.indexes) {
+                if (row_to_delete.contains(colName)) {
+                    auto key = valueToIndexKey(row_to_delete[colName]);
+                    if (index.count(key)) {
+                        auto& indices = index[key];
+                        indices.erase(std::remove(indices.begin(), indices.end(), idx_to_delete), indices.end());
+                    }
+                }
+            }
+
+            if (idx_to_delete != last_idx) {
+                table.data[idx_to_delete] = std::move(table.data.back());
+            }
+
+            if (!table.data.empty()) {
+                table.data.erase(table.data.size() - 1);
+            }
+        }
+
+        return toDelete.size();
+    }
+
+    json selectRows(const std::string& tableName, const std::vector<std::string>& columns, std::function<bool(const json&)> predicate) override {
         json result;
         result["status"] = "success";
         result["data"] = json::array();
-
         auto it = tables.find(tableName);
         if (it == tables.end()) {
             result["status"] = "error";
             result["message"] = "Table '" + tableName + "' does not exist";
             return result;
         }
-
         const auto& tableData = it->second.data;
-        std::vector<size_t> selectedIndices;
-        selectedIndices.reserve(tableData.size() / 10); // Assume ~10% selectivity
-
-        for (size_t i = 0; i < tableData.size(); ++i) {
-            if (predicate(tableData[i])) {
-                selectedIndices.push_back(i);
-            }
-        }
-
-        auto& resultData = result["data"];
-        resultData.get_ref<json::array_t&>().reserve(selectedIndices.size());
-
-        for (size_t idx : selectedIndices) {
-            const auto& row = tableData[idx];
-            if (columns.empty()) {
-                resultData.push_back(row);
-            } else {
-                json filteredRow;
-                for (const auto& col_name : columns) {
-                    if (row.contains(col_name)) {
-                        filteredRow[col_name] = row[col_name];
-                    } else {
-                        filteredRow[col_name] = nullptr;
+        for (const auto& row : tableData) {
+            if (predicate(row)) {
+                if (columns.empty() || (columns.size() == 1 && columns[0] == "*")) {
+                    result["data"].push_back(row);
+                } else {
+                    json filteredRow;
+                    for (const auto& col_name : columns) {
+                        if (row.contains(col_name)) filteredRow[col_name] = row[col_name];
+                        else filteredRow[col_name] = nullptr;
                     }
+                    result["data"].push_back(std::move(filteredRow));
                 }
-                resultData.push_back(std::move(filteredRow));
             }
         }
-
         return result;
     }
-
-    int updateRows(const std::string& tableName,
-                  const std::vector<std::pair<std::string, Value>>& assignments,
-                  std::function<bool(const json&)> predicate) override {
-        auto it = tables.find(tableName);
-        if (it == tables.end()) {
-            return 0;
-        }
-
-        auto& table = it->second;
-        int updatedCount = 0;
-
-        for (size_t i = 0; i < table.data.size(); ++i) {
-            auto& row = table.data[i];
-            if (predicate(row)) {
-                for (const auto& [col, val] : assignments) {
-                    if (table.indexes.count(col) && row.contains(col)) {
-                        std::string oldKey = valueToIndexKey(row[col]);
-                        auto& oldIndex = table.indexes[col][oldKey];
-                        oldIndex.erase(std::remove(oldIndex.begin(), oldIndex.end(), i), oldIndex.end());
-                    }
-                }
-
-                // Update values
-                for (const auto& [col, val] : assignments) {
-                    setJsonValue(row, col, val);
-                }
-
-                // Add to new indexes
-                for (const auto& [col, val] : assignments) {
-                    if (table.indexes.count(col)) {
-                        std::string newKey = valueToIndexKey(row[col]);
-                        table.indexes[col][newKey].push_back(i);
-                    }
-                }
-
-                updatedCount++;
+private:
+    void performGarbageCollection(Table& table) {
+        for (auto& [colName, index] : table.indexes) {
+            for (auto it = index.begin(); it != index.end();) {
+                if (it->second.empty()) it = index.erase(it);
+                else ++it;
             }
         }
-
-        return updatedCount;
-    }
-
-    int deleteRows(const std::string& tableName,
-                  std::function<bool(const json&)> predicate) override {
-        auto it = tables.find(tableName);
-        if (it == tables.end()) {
-            return 0;
-        }
-
-        auto& table = it->second;
-        std::vector<size_t> toDelete;
-        toDelete.reserve(table.data.size() / 10);
-
-        for (size_t i = 0; i < table.data.size(); ++i) {
-            if (predicate(table.data[i])) {
-                toDelete.push_back(i);
-            }
-        }
-
-        std::sort(toDelete.begin(), toDelete.end(), std::greater<size_t>());
-
-        for (size_t idx : toDelete) {
-            const auto& row = table.data[idx];
-
-            for (auto& [colName, index] : table.indexes) {
-                if (row.contains(colName)) {
-                    std::string key = valueToIndexKey(row[colName]);
-                    auto& idxList = index[key];
-                    idxList.erase(std::remove(idxList.begin(), idxList.end(), idx), idxList.end());
-                }
-            }
-
-            table.data.erase(table.data.begin() + idx);
-
-            for (auto& [colName, index] : table.indexes) {
-                for (auto& [val, indices] : index) {
-                    for (auto& rowIdx : indices) {
-                        if (rowIdx > idx) {
-                            rowIdx--;
-                        }
-                    }
-                }
-            }
-        }
-
-        return toDelete.size();
     }
 };

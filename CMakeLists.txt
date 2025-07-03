@@ -23,41 +23,22 @@ add_executable(database_terminal
         src/terminal_app.cpp
         ${QUERY_ENGINE_SOURCES}
 )
-
-target_include_directories(database_terminal
-        PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-target_link_libraries(database_terminal
-        PRIVATE
-        nlohmann_json::nlohmann_json
-)
-
-if(WIN32)
-    target_compile_definitions(database_terminal PRIVATE _WIN32_WINNT=0x0601)
-endif()
+target_include_directories(database_terminal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(database_terminal PRIVATE nlohmann_json::nlohmann_json)
 
 add_executable(run_tests
         tests/test_framework.h
+        tests/run_tests.cpp
+        tests/test_utils.h
         tests/test_lexer.cpp
         tests/test_parser.cpp
         tests/test_executor.cpp
-        tests/run_tests.cpp
-        ${QUERY_ENGINE_SOURCES}
         tests/test_optimized.cpp
+        tests/final_boss.cpp
+        ${QUERY_ENGINE_SOURCES}
 )
-
-target_include_directories(run_tests
-        PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-target_link_libraries(run_tests
-        PRIVATE
-        nlohmann_json::nlohmann_json
-)
-
+target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(run_tests PRIVATE nlohmann_json::nlohmann_json)
 
 option(BUILD_WEB_SERVER "Build web server with Crow" OFF)
 
@@ -69,20 +50,21 @@ if(BUILD_WEB_SERVER)
             GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
             GIT_TAG asio-1-28-0
     )
+    FetchContent_MakeAvailable(asio)
+
+    set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include)
+    message(STATUS "ASIO include directory set to: ${ASIO_INCLUDE_DIR}") # Для отладки
 
     FetchContent_Declare(
             crow
             GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
             GIT_TAG master
     )
-
     set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(CROW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 
-    FetchContent_MakeAvailable(asio crow)
-
-    set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include CACHE INTERNAL "")
+    FetchContent_MakeAvailable(crow)
 
     add_executable(database_server
             src/main.cpp
@@ -104,6 +86,5 @@ if(BUILD_WEB_SERVER)
 
     if(WIN32)
         target_link_libraries(database_server PRIVATE ws2_32 wsock32)
-        target_compile_definitions(database_server PRIVATE _WIN32_WINNT=0x0601)
     endif()
 endif()

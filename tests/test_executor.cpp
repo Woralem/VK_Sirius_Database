@@ -12,15 +12,18 @@ class TestStorageInterface : public StorageInterface {
 private:
     std::map<std::string, json> tables;
     std::map<std::string, std::vector<ColumnDef>> schemas;
+    std::map<std::string, TableOptions> tableOptions;
 
 public:
     bool createTable(const std::string& tableName,
-                    const std::vector<ColumnDef*>& columns) override {
+                    const std::vector<ColumnDef*>& columns,
+                    const TableOptions& options = TableOptions()) override {
         schemas[tableName].clear();
         for (auto* col : columns) {
             schemas[tableName].push_back(*col);
         }
         tables[tableName] = json::array();
+        tableOptions[tableName] = options;
         return true;
     }
 
@@ -126,6 +129,8 @@ private:
             row[key] = std::get<double>(value);
         } else if (std::holds_alternative<std::string>(value)) {
             row[key] = std::get<std::string>(value);
+        } else if (std::holds_alternative<bool>(value)) {
+            row[key] = std::get<bool>(value);
         } else {
             row[key] = nullptr;
         }
