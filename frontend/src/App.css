@@ -91,3 +91,83 @@ th {
   background-color: #e0e0e0;
   font-weight: bold;
 }
+
+.db-controls {
+  margin-bottom: 20px;
+  width: 100%;
+  max-width: 800px;
+}
+
+.db-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.db-select {
+  padding: 8px;
+  font-size: 1rem;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  background-color: white;
+  color: #333;
+}
+
+.manage-db-btn {
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  background-color: #4CAF50;
+}
+
+.manage-db-btn:hover {
+  background-color: #45a049;
+}
+
+.db-manager {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  padding: 15px;
+  margin-top: 10px;
+}
+
+.create-db {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.db-name-input {
+  flex: 1;
+  padding: 8px;
+  font-size: 1rem;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+.db-list h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.db-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  margin-bottom: 5px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.delete-btn {
+  padding: 5px 10px;
+  font-size: 0.9rem;
+  background-color: #f44336;
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: #da190b;
+}

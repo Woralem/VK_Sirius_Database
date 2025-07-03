@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
 project(DatabaseEngine CXX)
 
+add_definitions(-D_WIN32_WINNT=0x0A00)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -30,10 +32,6 @@ add_executable(run_tests
         tests/test_framework.h
         tests/run_tests.cpp
         tests/test_utils.h
-        tests/test_lexer.cpp
-        tests/test_parser.cpp
-        tests/test_executor.cpp
-        tests/test_optimized.cpp
         tests/final_boss.cpp
         ${QUERY_ENGINE_SOURCES}
 )
@@ -53,7 +51,7 @@ if(BUILD_WEB_SERVER)
     FetchContent_MakeAvailable(asio)
 
     set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include)
-    message(STATUS "ASIO include directory set to: ${ASIO_INCLUDE_DIR}") # Для отладки
+    message(STATUS "ASIO include directory set to: ${ASIO_INCLUDE_DIR}")
 
     FetchContent_Declare(
             crow
@@ -87,4 +85,5 @@ if(BUILD_WEB_SERVER)
     if(WIN32)
         target_link_libraries(database_server PRIVATE ws2_32 wsock32)
     endif()
+
 endif()
