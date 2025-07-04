@@ -5,28 +5,12 @@
 #include "http-server.h"
 #include "logger.h"
 
-
-
 HttpServer::HttpServer() {
     cur_bd = "default";
-    //создание System_logs
-    crow::json::wvalue db_req;
-    db_req["name"] = "__System_logs";
-    cpr::Response db_res = cpr::Post(
-                cpr::Url{"http://localhost:8080/api/db/create"},
-                cpr::Body{db_req.dump()},
-                cpr::Header{"Content-Type", "application/json"});
     std::cout << "HTTP Server created." << std::endl;
 }
 
 HttpServer::~HttpServer() {
-    //удаление System_logs
-    crow::json::wvalue db_req;
-    db_req["name"] = "__System_logs";
-    cpr::Response db_res = cpr::Post(
-                cpr::Url{"http://localhost:8080/api/db/delete"},
-                cpr::Body{db_req.dump()},
-                cpr::Header{"Content-Type", "application/json"});
     std::cout << "HTTP Server destroyed." << std::endl;
 }
 
@@ -119,15 +103,15 @@ void HttpServer::run(int port) {
                     //создание Таблицы запросов
                     db_request = crow::json::wvalue {};
                     db_request["name"] = "__System_logs";
-                    db_request["query"] = "CREATE TABLE queries_" + db_name + " (" +
-                        " id INTENGER, time TIMESTAMP, query VARCHAR" ");";
+                    db_request["query"] = "CREATE TABLE queries_" + db_name +
+                        "id INTENGER, time TIMESTAMP, query VARCHAR);";
                     db_res = cpr::Post(
                         cpr::Url{"http://localhost:8080/api/query"},
                         cpr::Body{db_request.dump()},
                         cpr::Header{"Content-Type", "application/json"});
                     //создание Таблицы ошибок
                     db_request["query"] = "CREATE TABLE errors_" + db_name +
-                        " (" + "id INTENGER time TIMESTAMP errors VARCHAR" ");";
+                        "(id INTENGER, time TIMESTAMP, errors VARCHAR);";
                     db_res = cpr::Post(
                         cpr::Url{"http://localhost:8080/api/query"},
                         cpr::Body{db_request.dump()},
@@ -265,7 +249,6 @@ void HttpServer::run(int port) {
                     db_req["query"] = "ALTER TABLE " + cur_bd +" RENAME COLUMN " +
                         (std::string)data["old_column_name"].s() + " TO " +
                             (std::string)data["new_column_name"].s() + ";";
-                    db_req["isUser"] = true;
                     cpr::Response db_res = cpr::Post(
                         cpr::Url{"http://localhost:8080/api/query"},
                         cpr::Body{db_req.dump()},
@@ -308,7 +291,6 @@ void HttpServer::run(int port) {
                     db_req["name"] = cur_bd;
                     db_req["query"] = "ALTER TABLE " + cur_bd + " ALTER COLUMN " +
                         (std::string)data["column_name"].s() + " TYPE " + (std::string)data["new_type"].s() + ";";
-                    db_req["isUser"] = true;
                     cpr::Response db_res = cpr::Post(
                         cpr::Url{"http://localhost:8080/api/query"},
                         cpr::Body{db_req.dump()},
@@ -439,13 +421,21 @@ void HttpServer::run(int port) {
                 response["error"] = "Missing 'type' field";
                 return crow::response(400, response.dump());
             }
+            if (!json_request.has("time")) {
+                CROW_LOG_ERROR << "Missing 'time' field: " << req.body;
+                LOG_ERROR("Server", "Missing 'time' field: " + req.body);
+                crow::json::wvalue response;
+                response["status"] = "error";
+                response["error"] = "Missing 'time' field";
+                return crow::response(400, response.dump());
+            }
             std::string request_type_str = json_request["query"].s();
             crow::json::wvalue db_req;
             std::string query = json_request["query"].s();
+            std::string time = json_request["time"].s();
             crow::json::wvalue db_request;
             db_request["name"] = HttpServer::cur_bd;
             db_request["query"] = query;
-            db_request["isUser"] = true;
             cpr::Response db_res = cpr::Post(
                 cpr::Url{"http://localhost:8080/api/query"},
                 cpr::Body{db_request.dump()},
@@ -468,7 +458,7 @@ void HttpServer::run(int port) {
             return crow::response(500, response.dump());
         }
     });
-    CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Post)//ВООБЩЕ НЕ ГОТОВО - просмотреть код ещё раз!!!
+    CROW_ROUTE(app, "/DB/query/history/delete").methods(crow::HTTPMethod::Post)
     ([&](crow::request& req) {
         crow::response res;
         try {
@@ -481,27 +471,198 @@ void HttpServer::run(int port) {
                 response["error"] = "Query cannot be empty " + req.body;
                 return crow::response(400, response.dump());
             }
-            if (!json_request.has("type")) {
-                CROW_LOG_ERROR << "Missing 'type' field: " << req.body;
-                LOG_ERROR("Server", "Missing 'type' field: " + req.body);
+            if (!json_request.has("id")) {
+                CROW_LOG_ERROR << "Missing 'id' field: " << req.body;
+                LOG_ERROR("Server", "Missing 'id' field: " + req.body);
                 crow::json::wvalue response;
                 response["status"] = "error";
-                response["error"] = "Missing 'type' field";
+                response["error"] = "Missing 'id' field";
                 return crow::response(400, response.dump());
             }
-            std::string request_type_str = json_request["type"].s();
-            if (!json_request.has("data") || !json_request["data"]) {
-                CROW_LOG_ERROR << "Missing 'data' field: " << req.body;
-                LOG_ERROR("Server", "Missing 'data' field: " + req.body);
-                crow::json::wvalue response;
-                response["status"] = "error";
-                response["error"] = "Missing 'data' field";
-                return crow::response(400, response.dump());
+            std::string id = json_request["id"].s();
+            crow::json::wvalue db_request;
+            db_request["name"] = HttpServer::cur_bd;
+            db_request["id"] = id;
+            cpr::Response db_res = cpr::Post(
+                cpr::Url{"http://localhost:8080/api/УДАЛЕНИЕ ЗАПРОСА ПО ID"},
+                cpr::Body{db_request.dump()},
+                cpr::Header{"Content-Type", "application/json"});
+            res.code = db_res.status_code;
+            //установка заголовков
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
             }
-            crow::json::rvalue data = json_request["data"];
-            std::string sql_query;//везде, кроме ERR
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Post created successfully");
+            return res;
         }
-        catch (const std::exception& e) {}
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
+    });
+    CROW_ROUTE(app, "/DB/query/errors/delete").methods(crow::HTTPMethod::Post)
+    ([&](crow::request& req) {
+        crow::response res;
+        try {
+            crow::json::rvalue json_request = crow::json::load(req.body);
+            if (!json_request) {
+                CROW_LOG_ERROR << "Invalid JSON: " << req.body;
+                LOG_ERROR("Server", "Invalid JSON: " + req.body);
+                crow::json::wvalue response;
+                response["status"] = "error";
+                response["error"] = "Query cannot be empty " + req.body;
+                return crow::response(400, response.dump());
+            }
+            if (!json_request.has("id")) {
+                CROW_LOG_ERROR << "Missing 'id' field: " << req.body;
+                LOG_ERROR("Server", "Missing 'id' field: " + req.body);
+                crow::json::wvalue response;
+                response["status"] = "error";
+                response["error"] = "Missing 'id' field";
+                return crow::response(400, response.dump());
+            }
+            std::string id = json_request["id"].s();
+            crow::json::wvalue db_request;
+            db_request["name"] =HttpServer::cur_bd;
+            db_request["query"] = id;
+            cpr::Response db_res = cpr::Post(
+                cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ УДАЛЕНИЕ ОШИБКИ ПО ID"},
+                cpr::Body{db_request.dump()},
+                cpr::Header{"Content-Type", "application/json"});
+            res.code = db_res.status_code;
+            //установка заголовков
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
+            }
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Post created successfully");
+            return res;
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
+    });
+    CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        crow::response res;
+        try {
+            crow::json::wvalue db_request;
+            db_request["name"] = HttpServer::cur_bd;
+            cpr::Response db_res = cpr::Post(
+                cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ТАБЛИЦЫ ЗАПРОСОВ"},
+                cpr::Body{db_request.dump()},
+                cpr::Header{"Content-Type", "application/json"});
+            res.code = db_res.status_code;
+            //установка заголовков
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
+            }
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Post created successfully");
+            return res;
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
+    });
+    CROW_ROUTE(app, "/DB/query/errors").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        crow::response res;
+        try {
+            crow::json::wvalue db_request;
+            db_request["name"] = HttpServer::cur_bd;
+            cpr::Response db_res = cpr::Post(
+                cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ТАБЛИЦЫ ОШИБОК"},
+                cpr::Body{db_request.dump()},
+                cpr::Header{"Content-Type", "application/json"});
+            res.code = db_res.status_code;
+            //установка заголовков
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
+            }
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Post created successfully");
+            return res;
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
+    });
+    CROW_ROUTE(app, "/DB/query/history/delete").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        crow::response res;
+        try {
+            crow::json::wvalue db_request;
+            db_request["name"] = HttpServer::cur_bd;
+            cpr::Response db_res = cpr::Post(
+                cpr::Url{"http://localhost:8080/api/ЕНДПОИН ДЛЯ УДАЛЕНИЕ ВСЕХ ЗАПРОСОВ"},
+                cpr::Body{db_request.dump()},
+                cpr::Header{"Content-Type", "application/json"});
+            res.code = db_res.status_code;
+            //установка заголовков
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
+            }
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Post created successfully");
+            return res;
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
+    });
+    CROW_ROUTE(app, "/DB/query/errors/delete").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        crow::response res;
+        try {
+            crow::json::wvalue db_request;
+            db_request["name"] = HttpServer::cur_bd;
+            cpr::Response db_res = cpr::Post(
+                cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ УДАЛЕНИЯ ВСЕХ ОШИБОК"},
+                cpr::Body{db_request.dump()},
+                cpr::Header{"Content-Type", "application/json"});
+            res.code = db_res.status_code;
+            //установка заголовков
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
+            }
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Post created successfully");
+            return res;
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
     });
     CROW_ROUTE(app, "DB/remove").methods(crow::HTTPMethod::Get)
     ([&]() {
@@ -518,19 +679,6 @@ void HttpServer::run(int port) {
                 res.add_header(key, value);
             }
             res.body = db_res.text;
-            //Удаление таблицы логов
-            db_req = crow::json::wvalue {};
-            db_req["name"] = "__System_logs";
-            db_req["query"] = "DELETE TABLE queries_" + cur_bd + ";";
-            db_res = cpr::Post(
-                cpr::Url{"http://localhost:8080/api/query"},
-                cpr::Body{db_req.dump()},
-                cpr::Header{"Content-Type", "application/json"});
-            db_req["query"] = "DELETE TABLE errors_" + cur_bd + ";";
-            db_res = cpr::Post(
-                cpr::Url{"http://localhost:8080/api/query"},
-                cpr::Body{db_req.dump()},
-                cpr::Header{"Content-Type", "application/json"});
             cur_bd = "default";
             LOG_SUCCESS("Server", "Get created successfully");
             return res;
@@ -544,5 +692,27 @@ void HttpServer::run(int port) {
             return crow::response(500, response.dump());
         }
     });
+    CROW_ROUTE(app, "DB/list").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        crow::response res;
+        try {
+            cpr::Response db_res = cpr::Get(
+                cpr::Url{"http://localhost:8080/api/bd/list"});
+            res.code = db_res.status_code;
+            for (const auto& [key, value] : db_res.header) {
+                res.add_header(key, value);
+            }
+            res.body = db_res.text;
+            LOG_SUCCESS("Server", "Get created successfully");
+            return res;
+        }
+        catch (const std::exception& e) {
+            LOG_ERROR("Server", "Internal error");
+            CROW_LOG_ERROR << "Internal error: " << e.what();
+            crow::json::wvalue response;
+            response["status"] = "error";
+            response["error"] = "An internal error occurred: " + std::string(e.what());
+            return crow::response(500, response.dump());
+        }
+    });
 }
-

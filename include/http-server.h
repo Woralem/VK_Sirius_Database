@@ -21,7 +21,8 @@ public:
         ERR
     };
     void run(int port = 8080);
-
+    bool in_table(int id, const std::string& table_name);
+    int find_id(std::string table_name);
     static DB_POST db_post(const std::string& request) {
         if (request == "CREATE") { return DB_POST::CREATE; }
         if (request == "REMOVE") { return DB_POST::REMOVE; }
