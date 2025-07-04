@@ -1,21 +1,234 @@
 #include "api/json_handler.h"
-#include <string>
-#include "nlohmann/json.hpp"
+#include "api/database_manager.h"
+#include "query_engine/lexer.h"
+#include "query_engine/parser.h"
+#include "query_engine/executor.h"
 
-namespace JsonHandler {
-    using json = nlohmann::json;
+using json = nlohmann::json;
 
-    std::string serializeSuccess(const std::string& message) {
-        json j;
-        j["status"] = "success";
-        j["data"]["message"] = message;
-        return j.dump(4);
+crow::response JsonHandler::createJsonResponse(int code, const json& body) {
+    crow::response res;
+    res.code = code;
+    res.add_header("Content-Type", "application/json");
+    res.add_header("Access-Control-Allow-Origin", "*");
+    res.body = body.dump();
+    return res;
+}
+
+bool JsonHandler::validateDatabaseName(const std::string& name) {
+    if (name.empty()) return false;
+    return name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == std::string::npos;
+}
+
+crow::response JsonHandler::handleListDatabases(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto databases = dbManager->listDatabases();
+        return createJsonResponse(200, json{
+            {"status", "success"},
+            {"databases", databases}
+        });
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", "Failed to list databases: " + std::string(e.what())}
+        });
     }
+}
 
-    std::string serializeError(const std::string& error_message) {
-        json j;
-        j["status"] = "error";
-        j["error"] = error_message;
-        return j.dump(4);
+crow::response JsonHandler::handleCreateDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto body = json::parse(req.body);
+        if (!body.contains("name") || !body["name"].is_string()) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Request body must contain 'name' field"}
+            });
+        }
+
+        std::string dbName = body["name"];
+
+        if (!validateDatabaseName(dbName)) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Invalid database name. Use only alphanumeric characters and underscores."}
+            });
+        }
+
+        if (dbManager->createDatabase(dbName)) {
+            return createJsonResponse(200, json{
+                {"status", "success"},
+                {"message", "Database created successfully"},
+                {"database", dbName}
+            });
+        } else {
+            return createJsonResponse(409, json{
+                {"status", "error"},
+                {"message", "Database already exists"}
+            });
+        }
+
+    } catch (const json::parse_error& e) {
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", "Invalid JSON: " + std::string(e.what())}
+        });
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", "Failed to create database: " + std::string(e.what())}
+        });
     }
+}
+
+crow::response JsonHandler::handleRenameDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto body = json::parse(req.body);
+        if (!body.contains("oldName") || !body["oldName"].is_string() ||
+            !body.contains("newName") || !body["newName"].is_string()) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Request body must contain 'oldName' and 'newName' fields"}
+            });
+        }
+
+        std::string oldName = body["oldName"];
+        std::string newName = body["newName"];
+
+        if (!validateDatabaseName(newName)) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Invalid database name. Use only alphanumeric characters and underscores."}
+            });
+        }
+
+        if (dbManager->renameDatabase(oldName, newName)) {
+            return createJsonResponse(200, json{
+                {"status", "success"},
+                {"message", "Database renamed successfully"},
+                {"oldName", oldName},
+                {"newName", newName}
+            });
+        } else {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Failed to rename database. Either the old database doesn't exist, the new name is already taken, or you're trying to rename the default database."}
+            });
+        }
+
+    } catch (const json::parse_error& e) {
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", "Invalid JSON: " + std::string(e.what())}
+        });
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", "Failed to rename database: " + std::string(e.what())}
+        });
+    }
+}
+
+crow::response JsonHandler::handleDeleteDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto body = json::parse(req.body);
+        if (!body.contains("name") || !body["name"].is_string()) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Request body must contain 'name' field"}
+            });
+        }
+
+        std::string dbName = body["name"];
+
+        if (dbManager->deleteDatabase(dbName)) {
+            return createJsonResponse(200, json{
+                {"status", "success"},
+                {"message", "Database deleted successfully"}
+            });
+        } else {
+            return createJsonResponse(404, json{
+                {"status", "error"},
+                {"message", "Database not found or cannot be deleted"}
+            });
+        }
+
+    } catch (const json::parse_error& e) {
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", "Invalid JSON: " + std::string(e.what())}
+        });
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", "Failed to delete database: " + std::string(e.what())}
+        });
+    }
+}
+
+crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto body = json::parse(req.body);
+        if (!body.contains("query") || !body["query"].is_string()) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Request body must contain 'query' string field."}
+            });
+        }
+
+        std::string query_str = body["query"];
+        std::string database = body.value("database", "default");
+
+        auto executor = dbManager->getExecutor(database);
+        if (!executor) {
+            return createJsonResponse(404, json{
+                {"status", "error"},
+                {"message", "Database not found: " + database}
+            });
+        }
+
+        query_engine::Lexer lexer(query_str);
+        auto tokens = lexer.tokenize();
+
+        query_engine::Parser parser(tokens);
+        auto ast = parser.parse();
+
+        if (parser.hasError()) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "SQL Parse Error"},
+                {"errors", parser.getErrors()}
+            });
+        }
+
+        if (!ast) {
+            return createJsonResponse(200, json{
+                {"status", "success"},
+                {"message", "Empty query executed successfully."}
+            });
+        }
+
+        json result = executor->execute(ast);
+        return createJsonResponse(200, result);
+
+    } catch (const json::parse_error& e) {
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", "Invalid JSON in request body: " + std::string(e.what())}
+        });
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", "An internal error occurred: " + std::string(e.what())}
+        });
+    }
+}
+
+crow::response JsonHandler::handleCors(const crow::request& req, const std::string& methods) {
+    crow::response res;
+    res.add_header("Access-Control-Allow-Origin", "*");
+    res.add_header("Access-Control-Allow-Headers", "Content-Type");
+    res.add_header("Access-Control-Allow-Methods", methods);
+    res.code = 204;
+    res.end();
+    return res;
 }

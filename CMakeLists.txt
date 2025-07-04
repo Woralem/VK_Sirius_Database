@@ -67,6 +67,9 @@ if(BUILD_WEB_SERVER)
 
     add_executable(database_server
             src/main.cpp
+            src/api/database_manager.cpp
+            src/api/json_handler.cpp
+            src/api/http_server.cpp
             ${QUERY_ENGINE_SOURCES}
             include/storage/optimized_in_memory_storage.h
     )

@@ -1,33 +1,84 @@
 #include "api/http_server.h"
+#include "api/database_manager.h"
 #include "api/json_handler.h"
-#include "crow.h"
 #include <iostream>
 
-HttpServer::HttpServer() {
-    std::cout << "HTTP Server created." << std::endl;
+HttpServer::HttpServer() : dbManager(std::make_shared<DatabaseManager>()) {
+    setupRoutes();
+    setupCorsRoutes();
 }
 
-HttpServer::~HttpServer() {
-    std::cout << "HTTP Server destroyed." << std::endl;
-}
-
-void HttpServer::run() {
-    crow::SimpleApp app;
-
-    CROW_ROUTE(app, "/api/query").methods("POST"_method)
-    ([](const crow::request& req) {
-        std::string sql_query = req.body;
-        if (sql_query.empty()) {
-            return crow::response(400, JsonHandler::serializeError("Query cannot be empty."));
-        }
-
-        std::cout << "Received query: " << sql_query << std::endl;
-        
-        // ЗАГЛУШКА: В будущем здесь будет вызов Query Engine
-
-        return crow::response(200, JsonHandler::serializeSuccess("Query received: " + sql_query));
+void HttpServer::setupRoutes() {
+    CROW_ROUTE(app, "/")
+    ([](){
+        return "Database Server is running! Use POST /api/query to send queries.";
     });
 
-    std::cout << "Starting server on port 18080..." << std::endl;
-    app.port(18080).multithreaded().run();
+    CROW_ROUTE(app, "/api/db/list")
+    .methods(crow::HTTPMethod::Get)
+    ([this](const crow::request& req){
+        return JsonHandler::handleListDatabases(req, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/db/create")
+    .methods(crow::HTTPMethod::Post)
+    ([this](const crow::request& req){
+        return JsonHandler::handleCreateDatabase(req, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/db/rename")
+    .methods(crow::HTTPMethod::Post)
+    ([this](const crow::request& req){
+        return JsonHandler::handleRenameDatabase(req, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/db/delete")
+    .methods(crow::HTTPMethod::Post)
+    ([this](const crow::request& req){
+        return JsonHandler::handleDeleteDatabase(req, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/query")
+    .methods(crow::HTTPMethod::Post)
+    ([this](const crow::request& req){
+        return JsonHandler::handleQuery(req, dbManager);
+    });
+}
+
+void HttpServer::setupCorsRoutes() {
+    CROW_ROUTE(app, "/api/query")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/db/list")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/db/create")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/db/rename")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/db/delete")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
+}
+
+void HttpServer::run(int port) {
+    CROW_LOG_INFO << "Database Server starting...";
+    std::cout << "Database Server is running on http://localhost:" << port << std::endl;
+    app.port(port).multithreaded().run();
 }

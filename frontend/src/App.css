@@ -57,7 +57,6 @@ button:hover {
   word-wrap: break-word;
 }
 
-
 .result-container {
   margin-top: 20px;
   padding: 15px;
@@ -125,7 +124,7 @@ th {
 }
 
 .db-manager {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 5px;
   padding: 15px;
@@ -144,21 +143,35 @@ th {
   font-size: 1rem;
   border-radius: 5px;
   border: 1px solid #ccc;
+  background-color: white;
+  color: #333;
 }
 
 .db-list h3 {
   margin-top: 0;
   margin-bottom: 10px;
+  color: white;
 }
 
 .db-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px;
-  margin-bottom: 5px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
+  padding: 8px 12px;
+  margin: 4px 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: white;
+}
+
+.db-item:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.db-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .delete-btn {
@@ -169,5 +182,63 @@ th {
 }
 
 .delete-btn:hover {
+  background-color: #da190b;
+}
+
+.rename-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.rename-btn:hover {
+  background-color: #45a049;
+}
+
+.rename-container {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.rename-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: white;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.save-btn {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.cancel-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.save-btn:hover {
+  background-color: #45a049;
+}
+
+.cancel-btn:hover {
   background-color: #da190b;
 }

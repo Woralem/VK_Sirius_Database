@@ -9,6 +9,8 @@ function App() {
     const [selectedDb, setSelectedDb] = useState('default');
     const [newDbName, setNewDbName] = useState('');
     const [showDbManager, setShowDbManager] = useState(false);
+    const [renamingDb, setRenamingDb] = useState(null);
+    const [renameInput, setRenameInput] = useState('');
 
     // Загрузка списка БД при монтировании компонента
     useEffect(() => {
@@ -142,6 +144,35 @@ function App() {
         }
     };
 
+    const renameDatabase = async (oldName, newName) => {
+        if (!newName.trim() || newName === oldName) return;
+
+        try {
+            const response = await fetch('/api/db/rename', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ oldName, newName }),
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                await loadDatabases();
+                if (selectedDb === oldName) {
+                    setSelectedDb(newName);
+                }
+                setRenamingDb(null);
+                setRenameInput('');
+            } else {
+                alert(data.message);
+            }
+        } catch (error) {
+            console.error('Failed to rename database:', error);
+            alert('Failed to rename database');
+        }
+    };
+
     const renderResult = () => {
         if (!result) return null;
 
@@ -224,14 +255,62 @@ function App() {
                                 <h3>Existing Databases:</h3>
                                 {databases.map(db => (
                                     <div key={db} className="db-item">
-                                        <span>{db}</span>
-                                        {db !== 'default' && (
-                                            <button
-                                                onClick={() => deleteDatabase(db)}
-                                                className="delete-btn"
-                                            >
-                                                Delete
-                                            </button>
+                                        {renamingDb === db ? (
+                                            <div className="rename-container">
+                                                <input
+                                                    type="text"
+                                                    value={renameInput}
+                                                    onChange={(e) => setRenameInput(e.target.value)}
+                                                    placeholder="New name"
+                                                    className="rename-input"
+                                                    autoFocus
+                                                    onKeyPress={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            renameDatabase(db, renameInput);
+                                                        }
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => renameDatabase(db, renameInput)}
+                                                    className="save-btn"
+                                                >
+                                                    Save
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setRenamingDb(null);
+                                                        setRenameInput('');
+                                                    }}
+                                                    className="cancel-btn"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <span>{db}</span>
+                                                <div className="db-actions">
+                                                    {db !== 'default' && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setRenamingDb(db);
+                                                                    setRenameInput(db);
+                                                                }}
+                                                                className="rename-btn"
+                                                            >
+                                                                Rename
+                                                            </button>
+                                                            <button
+                                                                onClick={() => deleteDatabase(db)}
+                                                                className="delete-btn"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 ))}
