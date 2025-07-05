@@ -113,7 +113,7 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
-    CROW_ROUTE(app, "DB/remove").methods(crow::HTTPMethod::Get)
+    CROW_ROUTE(app, "/DB/remove").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
             return DBhandler::removeDB(cur_db);
@@ -122,7 +122,7 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
-    CROW_ROUTE(app, "DB/list").methods(crow::HTTPMethod::Get)
+    CROW_ROUTE(app, "/DB/list").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
            return DBhandler::listDB();
@@ -174,16 +174,6 @@ void HttpServer::setupCorsRoutes() {
     ([](const crow::request& req){
         return JsonHandler::handleCors(req, "GET, OPTIONS");
     });
-    CROW_ROUTE(app, "/DB/query/history/delete")
-    .methods(crow::HTTPMethod::Options)
-    ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
-    });
-    CROW_ROUTE(app, "/DB/errors/delete")
-    .methods(crow::HTTPMethod::Options)
-    ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
-    });
     CROW_ROUTE(app, "/DB/remove")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
@@ -198,5 +188,9 @@ void HttpServer::setupCorsRoutes() {
 void HttpServer::run (int port) {
     CROW_LOG_INFO << "http Server on API starting...";
     std::cout << "Database Server is running on http://localhost:" << port << std::endl;
+    HttpServer::setupRoutes();
+    CROW_LOG_INFO << "Routers was set up...";
+    HttpServer::setupCorsRoutes();
+    CROW_LOG_INFO << "Cors was set up...";
     app.port(port).multithreaded().run();
 }
