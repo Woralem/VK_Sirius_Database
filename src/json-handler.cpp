@@ -1,25 +1,27 @@
-#include "json-handler.h"
+#include <crow.h>
 #include <string>
-#include "nlohmann/json.hpp"
-#include "logger.h"
+#include <nlohmann/json.hpp>
+
+#include "json-handler.h"
 
 namespace JsonHandler {
     using json = nlohmann::json;
-
-    std::string serializeSuccess(const std::string& message) {//возвращает json-строку
-        json j;
-        j["status"] = "success";
-        j["data"]["message"] = message;
-        LOG_SUCCESS("Json handler", "Data was converted to JSON successfully");
-        return j.dump(4);
+    crow::response createJsonResponse(int code, const json& body) {
+        crow::response res;
+        res.code = code;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body = body.dump();
+        return res;
+    }
+    crow::response handleCors(const crow::request& req, const std::string& methods) {
+        crow::response res;
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.add_header("Access-Control-Allow-Headers", "Content-Type");
+        res.add_header("Access-Control-Allow-Methods", methods);
+        res.code = 204;
+        res.end();
+        return res;
     }
 
-    std::string serializeError(const std::string& error_message, const std::vector<std::string>& errors) {
-        json j;
-        j["status"] = "error";
-        j["error"] = error_message;
-        j["errors"] = errors;
-        LOG_SUCCESS("Json handler", "Data abou ERROR was converted to JSON successfully");
-        return j.dump(4);
-    }
 }

@@ -7,8 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE HEADERS "include/*.cpp")
 add_executable(VK_Database_API_Layer
         ${SOURCES}
+        ${HEADERS}
 )
 
 FetchContent_Declare(
@@ -48,6 +50,7 @@ target_link_libraries(VK_Database_API_Layer
         nlohmann_json::nlohmann_json
         Crow::Crow
         cpr::cpr
+        ws2_32 wsock32
 )
 
 

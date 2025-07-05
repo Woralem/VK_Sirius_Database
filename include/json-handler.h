@@ -1,10 +1,9 @@
-#define JSON_HANDLER_H
-#ifdef JSON_HANDLER_H
 #pragma once
 #include <string>
-#include <vector>
+#include <nlohmann/json.hpp>
+#include<crow.h>
+using json = nlohmann::json;
 namespace JsonHandler {
-    std::string serializeSuccess(const std::string& message);
-    std::string serializeError(const std::string& error_message, const std::vector<std::string>& errors = {});
+    crow::response createJsonResponse(int code, const json& body);
+    crow::response handleCors(const crow::request& req, const std::string& methods);
 }
-#endif //JSON_HANDLER_H
