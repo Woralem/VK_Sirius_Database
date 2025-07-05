@@ -192,7 +192,7 @@ private:
                             if (isValidBoolean(str)) {
                                 return stringToBoolean(str);
                             } else {
-                                std::cout << "\033[93m[WARNING]\033[0m Cannot convert '" << str << "' to BOOLEAN, setting to NULL\n";
+                                std::cout << "\033[93m[WARNING]\033[0m Cannot convert '" + str + "' to BOOLEAN, setting to NULL\n";
                                 return nullptr;
                             }
                         }
@@ -539,6 +539,69 @@ public:
                   << ", Converted: " << convertedCount
                   << ", Set to NULL: " << nullCount << "\n";
 
+        return true;
+    }
+
+    bool dropColumn(const std::string& tableName, const std::string& columnName) override {
+        auto it = tables.find(tableName);
+        if (it == tables.end()) {
+            std::cout << "\033[91m[ERROR]\033[0m Table '" << tableName << "' does not exist.\n";
+            return false;
+        }
+
+        auto& table = it->second;
+
+        bool columnExists = false;
+        for (const auto& col : table.schema) {
+            if (col.name == columnName) {
+                columnExists = true;
+                break;
+            }
+        }
+
+        if (!columnExists) {
+            std::cout << "\033[91m[ERROR]\033[0m Column '" << columnName << "' does not exist.\n";
+            return false;
+        }
+
+        if (table.schema.size() <= 1) {
+            std::cout << "\033[91m[ERROR]\033[0m Cannot drop the last column from table.\n";
+            return false;
+        }
+
+        std::cout << "\033[96m[INFO]\033[0m Dropping column '" << columnName << "' from table '" << tableName << "'...\n";
+
+        table.schema.erase(
+            std::remove_if(table.schema.begin(), table.schema.end(),
+                [&columnName](const ColumnDef& col) {
+                    return col.name == columnName;
+                }),
+            table.schema.end()
+        );
+
+        for (auto& row : table.data) {
+            if (row.contains(columnName)) {
+                row.erase(columnName);
+            }
+        }
+
+        if (table.indexes.count(columnName)) {
+            table.indexes.erase(columnName);
+        }
+
+        std::cout << "\033[92m[SUCCESS]\033[0m Column '" << columnName << "' dropped successfully!\n";
+        return true;
+    }
+
+    // DROP TABLE operation
+    bool dropTable(const std::string& tableName) override {
+        auto it = tables.find(tableName);
+        if (it == tables.end()) {
+            return false;  // Таблица не существует
+        }
+
+        tables.erase(it);
+        std::cout << "\033[92m[SUCCESS]\033[0m Table '" << tableName << "' dropped successfully.\n";
         return true;
     }
 

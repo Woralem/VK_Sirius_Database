@@ -55,7 +55,7 @@ struct TableOptions {
 struct ASTNode {
     enum class Type {
         // Statements
-        SELECT_STMT, INSERT_STMT, UPDATE_STMT, DELETE_STMT, CREATE_TABLE_STMT, ALTER_TABLE_STMT,
+        SELECT_STMT, INSERT_STMT, UPDATE_STMT, DELETE_STMT, CREATE_TABLE_STMT, ALTER_TABLE_STMT, DROP_TABLE_STMT,
 
         // Expressions
         BINARY_EXPR, UNARY_EXPR, LITERAL_EXPR, IDENTIFIER_EXPR,
@@ -132,7 +132,8 @@ struct AlterTableStmt : public Statement {
     enum class AlterType {
         RENAME_TABLE,
         RENAME_COLUMN,
-        ALTER_COLUMN_TYPE
+        ALTER_COLUMN_TYPE,
+        DROP_COLUMN
     };
     AlterType alterType;
     std::string tableName;
@@ -142,6 +143,13 @@ struct AlterTableStmt : public Statement {
     std::string newDataType;
     DataType newParsedType;
     AlterTableStmt() : Statement(Type::ALTER_TABLE_STMT) {}
+};
+
+struct DropTableStmt : public Statement {
+    std::string tableName;
+    bool ifExists = false;  // Для поддержки DROP TABLE IF EXISTS
+
+    DropTableStmt() : Statement(Type::DROP_TABLE_STMT) {}
 };
 
 struct SelectStmt : public Statement {
@@ -216,6 +224,7 @@ inline std::ostream& operator<<(std::ostream& os, const ASTNode::Type& type) {
         case ASTNode::Type::DELETE_STMT:        os << "DELETE_STMT"; break;
         case ASTNode::Type::CREATE_TABLE_STMT:  os << "CREATE_TABLE_STMT"; break;
         case ASTNode::Type::ALTER_TABLE_STMT:   os << "ALTER_TABLE_STMT"; break;
+        case ASTNode::Type::DROP_TABLE_STMT:    os << "DROP_TABLE_STMT"; break;
         case ASTNode::Type::BINARY_EXPR:       os << "BINARY_EXPR"; break;
         case ASTNode::Type::UNARY_EXPR:        os << "UNARY_EXPR"; break;
         case ASTNode::Type::LITERAL_EXPR:     os << "LITERAL_EXPR"; break;

@@ -29,6 +29,10 @@ struct StorageInterface {
     virtual bool renameTable(const std::string& oldName, const std::string& newName) = 0;
     virtual bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) = 0;
     virtual bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) = 0;
+    virtual bool dropColumn(const std::string& tableName, const std::string& columnName) = 0;
+
+    // DROP TABLE operation
+    virtual bool dropTable(const std::string& tableName) = 0;
 };
 
 class QueryExecutor {
@@ -49,6 +53,7 @@ protected:
     nlohmann::json executeDelete(const DeleteStmt* stmt);
     nlohmann::json executeCreateTable(const CreateTableStmt* stmt);
     nlohmann::json executeAlterTable(const AlterTableStmt* stmt);
+    nlohmann::json executeDropTable(const DropTableStmt* stmt);
 
     // Evaluate expressions
     Value evaluateExpression(const ASTNode* expr, const nlohmann::json& row);

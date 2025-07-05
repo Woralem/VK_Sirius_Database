@@ -17,6 +17,9 @@ namespace query_engine {
         // ALTER TABLE keywords
         ALTER, RENAME, TO, COLUMN, TYPE,
 
+        // DROP keyword
+        DROP,
+
         // Pattern matching
         LIKE,
 

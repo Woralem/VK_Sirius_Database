@@ -102,7 +102,7 @@ void Parser::synchronize() {
         switch (peek().type) {
             case TokenType::CREATE: case TokenType::SELECT: case TokenType::INSERT:
             case TokenType::UPDATE_KEYWORD: case TokenType::DELETE_KEYWORD: case TokenType::ALTER:
-            case TokenType::END_OF_FILE:
+            case TokenType::DROP: case TokenType::END_OF_FILE:
                 return;
         }
         advance();
@@ -116,6 +116,7 @@ ASTNodePtr Parser::statement() {
     if (check(TokenType::DELETE_KEYWORD)) return deleteStatement();
     if (check(TokenType::CREATE)) return createTableStatement();
     if (check(TokenType::ALTER)) return alterTableStatement();
+    if (check(TokenType::DROP)) return dropTableStatement();
 
     error("Expected a statement (SELECT, INSERT, etc.) but got '" + peek().lexeme + "'");
     throw std::runtime_error("Parsing error: Invalid statement start");
@@ -282,9 +283,46 @@ std::unique_ptr<AlterTableStmt> Parser::alterTableStatement() {
         consume(TokenType::TYPE, "Expected TYPE after column name");
         stmt->newDataType = consume(TokenType::IDENTIFIER, "Expected new data type").lexeme;
         stmt->newParsedType = parseDataType(stmt->newDataType);
+    } else if (match({TokenType::DROP})) {
+        // ALTER TABLE table_name DROP COLUMN column_name
+        consume(TokenType::COLUMN, "Expected COLUMN after DROP");
+        stmt->alterType = AlterTableStmt::AlterType::DROP_COLUMN;
+        stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
     } else {
-        error("Expected RENAME or ALTER after table name");
+        error("Expected RENAME, ALTER, or DROP after table name");
     }
+
+    return stmt;
+}
+
+std::unique_ptr<DropTableStmt> Parser::dropTableStatement() {
+    consume(TokenType::DROP, "Expected DROP");
+    consume(TokenType::TABLE, "Expected TABLE after DROP");
+
+    auto stmt = std::make_unique<DropTableStmt>();
+
+    // Проверяем на IF EXISTS (опционально)
+    if (check(TokenType::IDENTIFIER)) {
+        std::string upper = peek().lexeme;
+        std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+        if (upper == "IF") {
+            advance();
+            if (check(TokenType::IDENTIFIER)) {
+                upper = peek().lexeme;
+                std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+                if (upper == "EXISTS") {
+                    advance();
+                    stmt->ifExists = true;
+                } else {
+                    error("Expected EXISTS after IF");
+                }
+            } else {
+                error("Expected EXISTS after IF");
+            }
+        }
+    }
+
+    stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
 
     return stmt;
 }

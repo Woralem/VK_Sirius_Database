@@ -35,9 +35,20 @@ add_executable(run_tests
         tests/final_boss.cpp
         ${QUERY_ENGINE_SOURCES}
         tests/like_tests.cpp
+        tests/drop_tests.cpp
 )
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(run_tests PRIVATE nlohmann_json::nlohmann_json)
+
+add_executable(run_drop_tests
+        tests/test_framework.h
+        tests/run_drop_tests.cpp
+        tests/test_utils.h
+        ${QUERY_ENGINE_SOURCES}
+        tests/drop_tests.cpp
+)
+target_include_directories(run_drop_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(run_drop_tests PRIVATE nlohmann_json::nlohmann_json)
 
 option(BUILD_WEB_SERVER "Build web server with Crow" OFF)
 

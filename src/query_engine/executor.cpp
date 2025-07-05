@@ -46,6 +46,7 @@ std::string astNodeTypeToString(ASTNode::Type type) {
         case ASTNode::Type::DELETE_STMT: return "DELETE";
         case ASTNode::Type::CREATE_TABLE_STMT: return "CREATE TABLE";
         case ASTNode::Type::ALTER_TABLE_STMT: return "ALTER TABLE";
+        case ASTNode::Type::DROP_TABLE_STMT: return "DROP TABLE";
         default: return "UNKNOWN";
     }
 }
@@ -88,6 +89,9 @@ nlohmann::json QueryExecutor::execute(const ASTNodePtr& ast) {
                 break;
             case ASTNode::Type::ALTER_TABLE_STMT:
                 result = executeAlterTable(static_cast<AlterTableStmt*>(ast.get()));
+                break;
+            case ASTNode::Type::DROP_TABLE_STMT:
+                result = executeDropTable(static_cast<DropTableStmt*>(ast.get()));
                 break;
             default:
                 if (enableLogging) LOG_ERROR("Executor", "Unknown statement type");
@@ -278,6 +282,14 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
             success = storage->alterColumnType(stmt->tableName, stmt->columnName, stmt->newParsedType);
             message = success ? "Column type changed successfully" : "Failed to change column type";
             break;
+
+        case AlterTableStmt::AlterType::DROP_COLUMN:
+            if (enableLogging) {
+                LOG_DEBUG("Executor", "Dropping column '" + stmt->columnName + "'");
+            }
+            success = storage->dropColumn(stmt->tableName, stmt->columnName);
+            message = success ? "Column dropped successfully" : "Failed to drop column";
+            break;
     }
 
     result["status"] = success ? "success" : "error";
@@ -288,6 +300,41 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
             LOG_SUCCESS("Executor", message);
         } else {
             LOG_ERROR("Executor", message);
+        }
+    }
+
+    return result;
+}
+
+nlohmann::json QueryExecutor::executeDropTable(const DropTableStmt* stmt) {
+    if (enableLogging) {
+        LOG_INFO("Executor", "Executing DROP TABLE: " + stmt->tableName);
+    }
+
+    bool success = storage->dropTable(stmt->tableName);
+
+    nlohmann::json result;
+
+    if (success) {
+        result["status"] = "success";
+        result["message"] = "Table '" + stmt->tableName + "' dropped successfully";
+        if (enableLogging) {
+            LOG_SUCCESS("Executor", "Table '" + stmt->tableName + "' dropped successfully");
+        }
+    } else {
+        if (stmt->ifExists) {
+            // Если используется IF EXISTS, не считаем отсутствие таблицы ошибкой
+            result["status"] = "success";
+            result["message"] = "Table '" + stmt->tableName + "' does not exist (IF EXISTS specified)";
+            if (enableLogging) {
+                LOG_INFO("Executor", "Table '" + stmt->tableName + "' does not exist (IF EXISTS specified)");
+            }
+        } else {
+            result["status"] = "error";
+            result["message"] = "Table '" + stmt->tableName + "' does not exist";
+            if (enableLogging) {
+                LOG_ERROR("Executor", "Table '" + stmt->tableName + "' does not exist");
+            }
         }
     }
 

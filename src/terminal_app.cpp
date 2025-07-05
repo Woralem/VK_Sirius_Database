@@ -435,6 +435,66 @@ public:
 
         return true;
     }
+
+    bool dropColumn(const std::string& tableName, const std::string& columnName) override {
+        LOG_INFO("Storage", "Dropping column '" + columnName + "' from table '" + tableName + "'");
+
+        if (tables.find(tableName) == tables.end()) {
+            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+            return false;
+        }
+
+        bool columnExists = false;
+        for (const auto& col : schemas[tableName]) {
+            if (col.name == columnName) {
+                columnExists = true;
+                break;
+            }
+        }
+
+        if (!columnExists) {
+            LOG_ERROR("Storage", "Column '" + columnName + "' does not exist");
+            return false;
+        }
+
+        if (schemas[tableName].size() <= 1) {
+            LOG_ERROR("Storage", "Cannot drop the last column from table");
+            return false;
+        }
+
+        schemas[tableName].erase(
+            std::remove_if(schemas[tableName].begin(), schemas[tableName].end(),
+                [&columnName](const ColumnDef& col) {
+                    return col.name == columnName;
+                }),
+            schemas[tableName].end()
+        );
+
+        for (auto& row : tables[tableName]) {
+            if (row.contains(columnName)) {
+                row.erase(columnName);
+            }
+        }
+
+        LOG_SUCCESS("Storage", "Column '" + columnName + "' dropped successfully");
+        return true;
+    }
+
+    bool dropTable(const std::string& tableName) override {
+        LOG_INFO("Storage", "Dropping table '" + tableName + "'");
+
+        auto it = tables.find(tableName);
+        if (it == tables.end()) {
+            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+            return false;
+        }
+
+        tables.erase(it);
+        schemas.erase(tableName);
+
+        LOG_SUCCESS("Storage", "Table '" + tableName + "' dropped successfully");
+        return true;
+    }
 };
 
 void printResult(const json& result) {
@@ -507,6 +567,8 @@ void printHelp() {
     std::cout << "ALTER TABLE table_name RENAME TO new_table_name\n";
     std::cout << "ALTER TABLE table_name RENAME COLUMN old_col TO new_col\n";
     std::cout << "ALTER TABLE table_name ALTER COLUMN col_name TYPE new_type\n";
+    std::cout << "ALTER TABLE table_name DROP COLUMN column_name\n";
+    std::cout << "DROP TABLE [IF EXISTS] table_name\n";
     std::cout << "\n";
     std::cout << "\033[1;36m=== PATTERN MATCHING ===\033[0m\n";
     std::cout << "WHERE column LIKE 'pattern'\n";
