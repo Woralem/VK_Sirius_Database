@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")
-file(GLOB_RECURSE HEADERS "include/*.cpp")
+file(GLOB_RECURSE HEADERS "include/*.h")
 add_executable(VK_Database_API_Layer
         ${SOURCES}
         ${HEADERS}

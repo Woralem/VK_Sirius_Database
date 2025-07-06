@@ -9,6 +9,7 @@
 namespace DBhandler {
     using json = nlohmann::json;
     crow::response createDB(const json& json_request) {
+        CROW_LOG_INFO << "Creating DB";
         crow::response res;
         if (!json_request.contains("name") || !json_request["name"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
@@ -20,8 +21,9 @@ namespace DBhandler {
             cpr::Url{"http://localhost:8080/api/db/create"},
             cpr::Body{json_request.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
+        CROW_LOG_INFO << "Created DB";
         res.code = db_res.status_code;
-            //установка заголовков
+        //установка заголовков
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
@@ -68,7 +70,7 @@ namespace DBhandler {
     crow::response listDB() {
         crow::response res;
         cpr::Response db_res = cpr::Get(
-                cpr::Url{"http://localhost:8080/api/bd/list"});
+                cpr::Url{"http://localhost:8080/api/db/list"});
         res.code = db_res.status_code;
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);

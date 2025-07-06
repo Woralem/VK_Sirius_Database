@@ -52,7 +52,7 @@ crow::response WindowManager::remove(const std::string& req) {
             });
     }
     std::string id = json_request["id"].get<std::string>();
-    if (WindowManager::manager.contains(id)) {
+    if (!WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("Unknown id: " + id)}
