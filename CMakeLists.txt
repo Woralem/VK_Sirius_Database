@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
 project(VK_Database_API_Layer CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
@@ -11,6 +11,8 @@ file(GLOB_RECURSE HEADERS "include/*.cpp")
 add_executable(VK_Database_API_Layer
         ${SOURCES}
         ${HEADERS}
+        include/windowManager.h
+        src/windowManager.cpp
 )
 if(WIN32) # Install dlls in the same directory as the executable on Windows
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

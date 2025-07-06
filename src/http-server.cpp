@@ -8,6 +8,7 @@
 #include "json-handler.h"
 #include "log-handler.h"
 #include "table-handler.h"
+#include "windowManager.h"
 
 HttpServer::HttpServer() {
     cur_db = "default";
@@ -77,6 +78,42 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+    CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Post)
+    ([&](const crow::request& req) {
+        try {
+            return wm.get(req.body);
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+    CROW_ROUTE(app, "/remove").methods(crow::HTTPMethod::Post)
+    ([&](const crow::request& req) {
+        try {
+            return wm.remove(req.body);
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+    CROW_ROUTE(app, "/add").methods(crow::HTTPMethod::Post)
+    ([&](const crow::request& req) {
+        try {
+            return wm.add(req.body);
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+    CROW_ROUTE(app, "/update").methods(crow::HTTPMethod::Post)
+    ([&](const crow::request& req) {
+        try {
+            return wm.update(req.body);
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
     CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
@@ -131,7 +168,33 @@ void HttpServer::setupRoutes() {
            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
-
+    CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        try {
+           return wm.get();
+        }
+        catch (const std::exception& e) {
+           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+    CROW_ROUTE(app, "/remove").methods(crow::HTTPMethod::Get)
+   ([&]() {
+       try {
+          return wm.remove();
+       }
+       catch (const std::exception& e) {
+          return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+       }
+   });
+    CROW_ROUTE(app, "/get/list").methods(crow::HTTPMethod::Get)
+    ([&]() {
+        try {
+           return wm.getList();
+        }
+        catch (const std::exception& e) {
+           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
 }
 void HttpServer::setupCorsRoutes() {
     CROW_ROUTE(app, "/changeDB")
