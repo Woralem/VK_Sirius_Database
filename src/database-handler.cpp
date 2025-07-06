@@ -115,7 +115,8 @@ namespace DBhandler {
         }
         cur_db = json_request["db_name"].get<std::string>();
         return JsonHandler::createJsonResponse(200, json{
-            {"status", "success"}
+            {"status", "success"},
+            {"message", "Database was changed successfully"}
         });
     }
 }

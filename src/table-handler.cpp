@@ -143,7 +143,7 @@ namespace TableHandler{
         if (!json_request.contains("query") || !json_request["query"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
-                {"message", "Request body must contain 'table_name' field"}
+                {"message", "Request body must contain 'query' field"}
             });
         }
         json db_req;
