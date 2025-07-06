@@ -82,5 +82,5 @@ private:
     // The primary data structure: an in-memory cache of the manager.db file.
     // Key: The 12-byte table name. Value: Offset.
     // We use our custom KeyHasher to enable hashing of TableNameKey.
-    std::unordered_map<TableNameKey, uint16_t, KeyHasher> table_links_;
+    std::unordered_map<TableNameKey, std::pair<uint16_t, std::streampos>, KeyHasher> table_links_;
 };

@@ -69,6 +69,8 @@ Catalog::Catalog(const std::string& db_path)
     // Open file streams for managing table metadata and free links.
     manager_file_.open(manager_db_path_, std::ios::in | std::ios::out | std::ios::app | std::ios::binary);
     meta_file_.open(meta_db_path_, std::ios::in | std::ios::out | std::ios::binary);
+    manager_file_.exceptions(std::ios::failbit | std::ios::badbit);
+    meta_file_.exceptions(std::ios::failbit | std::ios::badbit);
 
     if (!manager_file_.is_open()) {
         throw std::runtime_error("FATAL: Could not open manager.db stream.");
@@ -107,7 +109,7 @@ void Catalog::createTable(const std::string& table_name, const std::vector<Colum
     // Get a unique link and persist the new key-link pair.
     setLink(key);
 
-    uint16_t link = table_links_[key];
+    uint16_t link = table_links_[key].first;
 
     // The link is used to generate a unique, two-level directory structure.
     // For a link 0xHHLL, the path is db_path/HH/LL.*
@@ -168,7 +170,10 @@ void Catalog::setLink(const TableNameKey& key) {
     }
 
     // Update the in-memory map.
-    table_links_[key] = link;
+    // Предполагая, что manager_data_ - это ваш объект std::fstream
+    manager_file_.seekg(0, std::ios::end);
+    std::streampos last_byte_pos = manager_file_.tellg();
+    table_links_[key] = {link, last_byte_pos};
 
     // Append the new record (12-byte key + 2-byte link) to the manager file.
     manager_file_.write(reinterpret_cast<const char*>(&key), sizeof(TableNameKey));
@@ -190,7 +195,7 @@ bool Catalog::getTableLink(const std::string& table_name, uint16_t& link_out) co
     auto it = table_links_.find(key);
 
     if (it != table_links_.end()) {
-        link_out = it->second;
+        link_out = it->second.first;
         return true;
     }
     return false;
@@ -222,7 +227,7 @@ void Catalog::load() {
             uint16_t link;
             memcpy(&key, buffer, sizeof(TableNameKey));
             memcpy(&link, buffer + sizeof(TableNameKey), sizeof(uint16_t));
-            table_links_[key] = link;
+            table_links_[key] = {link, file.tellg() - record_size};
         }
     }
 
@@ -262,4 +267,45 @@ TableNameKey Catalog::stringToKey(const std::string& s) const {
 
     // Reinterpret the raw byte buffer as the final TableNameKey.
     return *reinterpret_cast<TableNameKey*>(buffer.data());
+}
+
+void Catalog::dropTable(const std::string& table_name) {
+    TableNameKey key = stringToKey(table_name);
+
+    auto it = table_links_.find(key);
+    
+    if (it == table_links_.end()) {
+        throw std::runtime_error(std::format("Table {} does not exist.", table_name));
+        return;
+    }
+
+    try {
+        std::streampos pos = it->second.second;
+        std::uint16_t link = it->second.first;
+
+        manager_file_.seekp(pos, std::ios::beg); // Переходим в начало файла
+
+        char write_buffer[sizeof(TableNameKey) + sizeof(uint16_t)];
+        std::fill(write_buffer, write_buffer + sizeof(write_buffer), 0xFF);
+        manager_file_.write(write_buffer, sizeof(write_buffer));
+
+        // Write the link to the meta file for recycling.
+        meta_file_.seekp(0, std::ios::end);
+        char link_buffer[sizeof(link)];
+        link_buffer[0] = link & 0xFF;          // Little-endian
+        link_buffer[1] = (link >> 8) & 0xFF;
+        meta_file_.write(link_buffer, sizeof(link));
+
+        table_links_.erase(key);
+        // TODO: Remove the physical files associated with the table.
+        // This would involve deleting the files in the directory structure
+        // based on the link, which is not implemented here.
+
+        std::cout << "Table " << table_name << " dropped successfully." << std::endl;
+    } catch (const std::ios_base::failure& e) {
+        // Если любая из операций seekp/write не удалась, мы попадаем сюда.
+        // Кэш table_links_ остается нетронутым. Состояние консистентно.
+        // Оборачиваем ошибку ввода-вывода в более понятное сообщение.
+        throw std::runtime_error(std::format("Disk I/O error while dropping table '{}': {}", table_name, e.what()));
+    }
 }
