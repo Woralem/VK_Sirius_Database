@@ -1,68 +1,64 @@
+# Sets the minimum version of CMake required to build this project.
 cmake_minimum_required(VERSION 3.15)
-project(DatabaseEngine CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# Defines the project name and specifies its primary programming language.
+project(StorageEngineProject CXX)
+
+# Enforces the C++20 standard for the entire project.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include(FetchContent)
+# --- 1. Create the storage engine library ---
 
-FetchContent_Declare(
-        asio
-        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-        GIT_TAG asio-1-28-0
+# Compiles all specified source files into a single static library (.a/.lib)
+# named "storage_engine". A static library is a collection of object files
+# that is linked into the final executable.
+add_library(storage_engine STATIC
+    # API Layer
+    src/api/storage_engine.cpp
+
+    # Logical Layer
+    src/logical/table.cpp
+    src/logical/column.cpp
+
+    # Physical Layer
+    src/physical/file_manager.cpp
+    src/physical/catalog.cpp
+    src/physical/metadata_io.cpp
+    src/physical/block_data_io.cpp
+    src/physical/heap_io.cpp
+    src/physical/space_manager.cpp
 )
 
-FetchContent_Declare(
-        nlohmann_json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.11.2
+# Specifies the include directories required to compile the "storage_engine" library.
+# PUBLIC: Directories needed by targets that link against this library (e.g., main.exe).
+#         This is for the public API headers.
+# PRIVATE: Directories needed only for compiling this library itself.
+#          This is for internal implementation headers.
+target_include_directories(storage_engine
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include # Public headers for the API
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src     # Internal headers for implementation
 )
 
-FetchContent_MakeAvailable(asio nlohmann_json)
+# --- 2. Create an executable for testing ---
 
-set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include CACHE INTERNAL "")
+# Creates the main executable program from the specified source file.
+add_executable(main src/main.cpp)
 
-FetchContent_Declare(
-        crow
-        GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
-        GIT_TAG master
+# Explicitly tell the 'main' target where to find the project's public headers.
+# This ensures that `#include "storage_engine.h"` and other public headers are found.
+# Note: This is automatically handled by `target_link_libraries` if the library's
+# public include directories are set correctly, but being explicit can improve clarity.
+target_include_directories(main PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(CROW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+# --- 3. Link the executable against the library ---
 
-FetchContent_MakeAvailable(crow)
-
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-
-add_executable(database_server ${SOURCES})
-
-target_include_directories(database_server
-        PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${ASIO_INCLUDE_DIR}
-)
-
-target_link_libraries(database_server
-        PRIVATE
-        Crow::Crow
-        nlohmann_json::nlohmann_json
-)
-
-if(WIN32)
-    target_link_libraries(database_server PRIVATE ws2_32 wsock32)
-    target_compile_definitions(database_server PRIVATE _WIN32_WINNT=0x0601)
-endif()
-
-if(CMAKE_EXPORT_COMPILE_COMMANDS)
-    set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES
-            ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
-endif()
-
-target_include_directories(database_server
-        PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${crow_SOURCE_DIR}/include
-        ${nlohmann_json_SOURCE_DIR}/include
-)
+# Specifies that the 'main' executable depends on and must be linked with the
+# 'storage_engine' library. The 'PRIVATE' keyword indicates that 'main' uses
+# 'storage_engine', but this dependency is not propagated to other targets that
+# might link against 'main'.
+target_link_libraries(main PRIVATE storage_engine)
