@@ -1,3 +1,4 @@
+#pragma once
 #include <string>
 #include<crow.h>
 #include <nlohmann/json.hpp>

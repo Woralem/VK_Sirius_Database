@@ -11,8 +11,6 @@ file(GLOB_RECURSE HEADERS "include/*.cpp")
 add_executable(VK_Database_API_Layer
         ${SOURCES}
         ${HEADERS}
-        include/windowManager.h
-        src/windowManager.cpp
 )
 if(WIN32) # Install dlls in the same directory as the executable on Windows
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

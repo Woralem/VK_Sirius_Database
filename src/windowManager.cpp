@@ -1,10 +1,11 @@
 #include <string>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
+#include <crow.h>
+
 #include "windowManager.h"
 #include "json-handler.h"
-#include <crow.h>
-#include <vector>
+
 using json = nlohmann::json;
 crow::response WindowManager::get() {
     return JsonHandler::createJsonResponse(200, json{

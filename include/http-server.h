@@ -1,5 +1,4 @@
-#define HTTP_SERVER_H
-#ifdef HTTP_SERVER_H
+#pragma once
 #include <string>
 #include<crow.h>
 
@@ -17,4 +16,3 @@ private:
     std::string cur_db;
     WindowManager wm;
 };
-#endif //HTTP_SERVER_H
