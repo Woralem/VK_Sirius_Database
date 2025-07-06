@@ -4,9 +4,9 @@
 
 namespace query_engine {
 
-thread_local char Lexer::upperBuffer[256];
+thread_local std::array<char, 256> Lexer::upperBuffer;
 
-std::string tokenTypeToString(TokenType type) {
+std::string_view tokenTypeToString(TokenType type) noexcept {
     switch (type) {
         case TokenType::SELECT: return "SELECT";
         case TokenType::FROM: return "FROM";
@@ -93,7 +93,7 @@ const std::unordered_map<std::string_view, TokenType> Lexer::keywords = {
     {"DAYS", TokenType::DAYS}
 };
 
-Lexer::Lexer(const std::string& source)
+Lexer::Lexer(std::string_view source)
     : source(source), sourceView(source) {}
 
 std::vector<Token> Lexer::tokenize() {
@@ -108,7 +108,7 @@ std::vector<Token> Lexer::tokenize() {
         tokens.push_back(std::move(token));
     }
 
-    tokens.push_back(makeToken(TokenType::END_OF_FILE, ""));
+    tokens.emplace_back(TokenType::END_OF_FILE, "", line, column);
     return tokens;
 }
 
@@ -211,17 +211,17 @@ Token Lexer::identifier() {
 
     std::string_view text(&source[start], current - start);
 
-    // Оптимизированное uppercase преобразование
-    size_t len = std::min(text.length(), sizeof(upperBuffer) - 1);
+    size_t len = std::min(text.length(), upperBuffer.size() - 1);
     for (size_t i = 0; i < len; ++i) {
-        upperBuffer[i] = std::toupper(text[i]);
+        upperBuffer[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[i])));
     }
-    std::string_view upperText(upperBuffer, len);
+    upperBuffer[len] = '\0';
+    std::string_view upperText(upperBuffer.data(), len);
 
     auto it = keywords.find(upperText);
     TokenType type = (it != keywords.end()) ? it->second : TokenType::IDENTIFIER;
 
-    return makeToken(type, std::string(text));
+    return makeToken(type, text);
 }
 
 Token Lexer::number() {
@@ -236,21 +236,21 @@ Token Lexer::number() {
     if (current < source.length() && source[current] == '.' &&
         current + 1 < source.length() && std::isdigit(source[current + 1])) {
         isFloat = true;
-        advance(); // consume '.'
+        advance();
         while (current < source.length() && std::isdigit(source[current])) {
             current++;
             column++;
         }
     }
 
-    std::string text = source.substr(start, current - start);
+    std::string_view text(&source[start], current - start);
     Token token = makeToken(TokenType::NUMBER_LITERAL, text);
 
     try {
         if (isFloat) {
-            token.value = std::stod(text);
+            token.value = std::stod(std::string(text));
         } else {
-            token.value = std::stoi(text);
+            token.value = std::stoi(std::string(text));
         }
     } catch(const std::out_of_range&) {
         return errorToken("Number literal is out of range");
@@ -284,18 +284,18 @@ Token Lexer::string() {
 
     advance();
 
-    std::string lexeme = source.substr(startLexeme, current - startLexeme);
+    std::string_view lexeme(&source[startLexeme], current - startLexeme);
     Token token = makeToken(TokenType::STRING_LITERAL, lexeme);
     token.value = std::move(value);
     return token;
 }
 
-Token Lexer::makeToken(TokenType type, const std::string& lexeme) {
+Token Lexer::makeToken(TokenType type, std::string_view lexeme) {
     return Token(type, lexeme, line, column - lexeme.length());
 }
 
-Token Lexer::errorToken(const std::string& message) {
-    return Token(TokenType::UNKNOWN, std::string(1, source[current - 1]), line, column - 1);
+Token Lexer::errorToken(std::string_view message) {
+    return Token(TokenType::UNKNOWN, std::string_view(&source[current - 1], 1), line, column - 1);
 }
 
 }

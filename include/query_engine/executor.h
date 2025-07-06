@@ -1,4 +1,6 @@
 #pragma once
+#include "../config.h"
+#include "../utils.h"
 #include "ast.h"
 #include <nlohmann/json.hpp>
 #include <functional>
@@ -7,32 +9,45 @@
 
 namespace query_engine {
 
+#if HAS_CONCEPTS
+// Concept for predicate functions
+template<typename T>
+concept JsonPredicate = std::invocable<T, const nlohmann::json&> &&
+                       std::same_as<std::invoke_result_t<T, const nlohmann::json&>, bool>;
+
+template<typename T>
+concept StorageType = requires(T t) {
+    { t.createTable(std::string{}, std::vector<ColumnDef*>{}) } -> std::same_as<bool>;
+    { t.insertRow(std::string{}, std::vector<std::string>{}, std::vector<Value>{}) } -> std::same_as<bool>;
+};
+#endif
+
 struct StorageInterface {
     virtual ~StorageInterface() = default;
 
-    virtual bool createTable(const std::string& tableName,
+    [[nodiscard]] virtual bool createTable(const std::string& tableName,
                            const std::vector<ColumnDef*>& columns,
                            const TableOptions& options = TableOptions()) = 0;
-    virtual bool insertRow(const std::string& tableName,
+    [[nodiscard]] virtual bool insertRow(const std::string& tableName,
                           const std::vector<std::string>& columns,
                           const std::vector<Value>& values) = 0;
-    virtual nlohmann::json selectRows(const std::string& tableName,
+    [[nodiscard]] virtual nlohmann::json selectRows(const std::string& tableName,
                                      const std::vector<std::string>& columns,
                                      std::function<bool(const nlohmann::json&)> predicate) = 0;
-    virtual int updateRows(const std::string& tableName,
+    [[nodiscard]] virtual int updateRows(const std::string& tableName,
                           const std::vector<std::pair<std::string, Value>>& assignments,
                           std::function<bool(const nlohmann::json&)> predicate) = 0;
-    virtual int deleteRows(const std::string& tableName,
+    [[nodiscard]] virtual int deleteRows(const std::string& tableName,
                           std::function<bool(const nlohmann::json&)> predicate) = 0;
 
     // ALTER TABLE operations
-    virtual bool renameTable(const std::string& oldName, const std::string& newName) = 0;
-    virtual bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) = 0;
-    virtual bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) = 0;
-    virtual bool dropColumn(const std::string& tableName, const std::string& columnName) = 0;
+    [[nodiscard]] virtual bool renameTable(const std::string& oldName, const std::string& newName) = 0;
+    [[nodiscard]] virtual bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) = 0;
+    [[nodiscard]] virtual bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) = 0;
+    [[nodiscard]] virtual bool dropColumn(const std::string& tableName, const std::string& columnName) = 0;
 
     // DROP TABLE operation
-    virtual bool dropTable(const std::string& tableName) = 0;
+    [[nodiscard]] virtual bool dropTable(const std::string& tableName) = 0;
 };
 
 class QueryExecutor {
@@ -40,39 +55,42 @@ public:
     explicit QueryExecutor(std::shared_ptr<StorageInterface> storage);
     virtual ~QueryExecutor() = default;
 
-    nlohmann::json execute(const ASTNodePtr& ast);
+    [[nodiscard]] nlohmann::json execute(const ASTNodePtr& ast);
 
 protected:
     std::shared_ptr<StorageInterface> storage;
     bool enableLogging = false;
 
     // Execute different statement types
-    nlohmann::json executeSelect(const SelectStmt* stmt);
-    nlohmann::json executeInsert(const InsertStmt* stmt);
-    nlohmann::json executeUpdate(const UpdateStmt* stmt);
-    nlohmann::json executeDelete(const DeleteStmt* stmt);
-    nlohmann::json executeCreateTable(const CreateTableStmt* stmt);
-    nlohmann::json executeAlterTable(const AlterTableStmt* stmt);
-    nlohmann::json executeDropTable(const DropTableStmt* stmt);
+    [[nodiscard]] nlohmann::json executeSelect(const SelectStmt* stmt);
+    [[nodiscard]] nlohmann::json executeInsert(const InsertStmt* stmt);
+    [[nodiscard]] nlohmann::json executeUpdate(const UpdateStmt* stmt);
+    [[nodiscard]] nlohmann::json executeDelete(const DeleteStmt* stmt);
+    [[nodiscard]] nlohmann::json executeCreateTable(const CreateTableStmt* stmt);
+    [[nodiscard]] nlohmann::json executeAlterTable(const AlterTableStmt* stmt);
+    [[nodiscard]] nlohmann::json executeDropTable(const DropTableStmt* stmt);
 
     // Evaluate expressions
-    Value evaluateExpression(const ASTNode* expr, const nlohmann::json& row);
-    bool evaluatePredicate(const ASTNode* expr, const nlohmann::json& row);
+    [[nodiscard]] Value evaluateExpression(const ASTNode* expr, const nlohmann::json& row);
+    [[nodiscard]] bool evaluatePredicate(const ASTNode* expr, const nlohmann::json& row);
 
     // Helper methods
-    std::function<bool(const nlohmann::json&)> createPredicate(const ASTNode* whereClause);
+    [[nodiscard]] std::function<bool(const nlohmann::json&)> createPredicate(const ASTNode* whereClause);
 
     // Optimized string building
-    void appendValueToString(std::string& result, const Value& value);
-    std::string valueToString(const Value& value);
+    void appendValueToString(utils::StringBuilder& builder, const Value& value);
+    [[nodiscard]] std::string valueToString(const Value& value);
 
 private:
-    // Cache for compiled predicates
+    // Cache for compiled predicates with smart cleanup
     mutable std::unordered_map<const ASTNode*,
         std::function<bool(const nlohmann::json&)>> predicateCache;
+    mutable size_t cacheCleanupCounter = 0;
+    static constexpr size_t CACHE_CLEANUP_INTERVAL = 1000;
+    void cleanupCacheIfNeeded() const;
 };
 
-// Optimized executor with caching and reduced logging
+// Optimized executor with enhanced caching
 class OptimizedQueryExecutor : public QueryExecutor {
 public:
     explicit OptimizedQueryExecutor(std::shared_ptr<StorageInterface> storage)
@@ -81,6 +99,8 @@ public:
     }
 
     void setLoggingEnabled(bool enabled) { enableLogging = enabled; }
+
+    [[nodiscard]] nlohmann::json executeBatch(const std::vector<ASTNodePtr>& statements);
 };
 
 }

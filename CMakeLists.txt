@@ -1,10 +1,30 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
 project(DatabaseEngine CXX)
 
-add_definitions(-D_WIN32_WINNT=0x0A00)
-
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(MSVC)
+    add_compile_options(/std:c++20)
+    add_compile_options(/Zc:__cplusplus)
+    add_compile_options(/permissive-)
+
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Ob3 /GL /Oi /Ot /Oy /fp:fast")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
+
+    add_compile_options(/utf-8)
+
+    add_compile_options(/MP)
+
+    add_compile_options(/arch:AVX2)
+
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(-D_SILENCE_CXX17_ALLOCATOR_VOID_DEPRECATION_WARNING)
+
+    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+endif()
+
+add_definitions(-D_WIN32_WINNT=0x0A00)
 
 include(FetchContent)
 
@@ -40,16 +60,6 @@ add_executable(run_tests
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(run_tests PRIVATE nlohmann_json::nlohmann_json)
 
-add_executable(run_drop_tests
-        tests/test_framework.h
-        tests/run_drop_tests.cpp
-        tests/test_utils.h
-        ${QUERY_ENGINE_SOURCES}
-        tests/drop_tests.cpp
-)
-target_include_directories(run_drop_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(run_drop_tests PRIVATE nlohmann_json::nlohmann_json)
-
 option(BUILD_WEB_SERVER "Build web server with Crow" OFF)
 
 if(BUILD_WEB_SERVER)
@@ -63,7 +73,6 @@ if(BUILD_WEB_SERVER)
     FetchContent_MakeAvailable(asio)
 
     set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include)
-    message(STATUS "ASIO include directory set to: ${ASIO_INCLUDE_DIR}")
 
     FetchContent_Declare(
             crow
@@ -82,7 +91,7 @@ if(BUILD_WEB_SERVER)
             src/api/json_handler.cpp
             src/api/http_server.cpp
             ${QUERY_ENGINE_SOURCES}
-            include/storage/optimized_in_memory_storage.h
+            src/storage/OptimizedInMemoryStorage.cpp
     )
 
     target_include_directories(database_server
@@ -96,6 +105,15 @@ if(BUILD_WEB_SERVER)
             Crow::Crow
             nlohmann_json::nlohmann_json
     )
+
+    if(MSVC)
+        set_property(TARGET database_server PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+        target_compile_options(database_server PRIVATE
+                $<$<CONFIG:Release>:/O2>
+                $<$<CONFIG:Release>:/Ob3>
+                $<$<CONFIG:Release>:/GL>
+        )
+    endif()
 
     if(WIN32)
         target_link_libraries(database_server PRIVATE ws2_32 wsock32)

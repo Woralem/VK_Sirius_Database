@@ -1,43 +1,51 @@
 #include "query_engine/executor.h"
 #include "utils/logger.h"
+#include "config.h"
+#include "utils.h"
 #include <regex>
+#include <format>
+#include <ranges>
 
 namespace query_engine {
 
-    bool matchLikePattern(const std::string& text, const std::string& pattern) {
-        size_t tLen = text.length();
-        size_t pLen = pattern.length();
-        size_t tIdx = 0;
-        size_t pIdx = 0;
-        size_t tStar = std::string::npos;
-        size_t pStar = std::string::npos;
+template<typename T>
+concept StringLike = std::convertible_to<T, std::string_view>;
 
-        while (tIdx < tLen) {
-            if (pIdx < pLen && (pattern[pIdx] == text[tIdx] || pattern[pIdx] == '_')) {
-                tIdx++;
-                pIdx++;
-            }
-            else if (pIdx < pLen && pattern[pIdx] == '%') {
-                tStar = tIdx;
-                pStar = pIdx;
-                pIdx++;
-            }
-            else if (pStar != std::string::npos) {
-                pIdx = pStar + 1;
-                tStar++;
-                tIdx = tStar;
-            }
-            else {
-                return false;
-            }
-        }
+bool matchLikePattern(std::string_view text, std::string_view pattern) {
+    size_t tLen = text.length();
+    size_t pLen = pattern.length();
+    size_t tIdx = 0;
+    size_t pIdx = 0;
+    size_t tStar = std::string::npos;
+    size_t pStar = std::string::npos;
 
-        while (pIdx < pLen && pattern[pIdx] == '%') {
+    while (tIdx < tLen) {
+        if (pIdx < pLen && (pattern[pIdx] == text[tIdx] || pattern[pIdx] == '_')) {
+            tIdx++;
             pIdx++;
         }
-
-        return pIdx == pLen;
+        else if (pIdx < pLen && pattern[pIdx] == '%') {
+            tStar = tIdx;
+            pStar = pIdx;
+            pIdx++;
+        }
+        else if (pStar != std::string::npos) {
+            pIdx = pStar + 1;
+            tStar++;
+            tIdx = tStar;
+        }
+        else {
+            return false;
+        }
     }
+
+    while (pIdx < pLen && pattern[pIdx] == '%') {
+        pIdx++;
+    }
+
+    return pIdx == pLen;
+}
+
 std::string astNodeTypeToString(ASTNode::Type type) {
     switch (type) {
         case ASTNode::Type::SELECT_STMT: return "SELECT";
@@ -54,18 +62,18 @@ std::string astNodeTypeToString(ASTNode::Type type) {
 QueryExecutor::QueryExecutor(std::shared_ptr<StorageInterface> storage)
     : storage(storage), enableLogging(true) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Initialized with storage interface");
+        LOGF_INFO("Executor", "Initialized with storage interface");
     }
 }
 
 nlohmann::json QueryExecutor::execute(const ASTNodePtr& ast) {
     if (!ast) {
-        if (enableLogging) LOG_ERROR("Executor", "Received null AST");
+        if (enableLogging) LOGF_ERROR("Executor", "Received null AST");
         return {{"error", "Invalid AST"}};
     }
 
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing " + astNodeTypeToString(ast->type) + " statement");
+        LOGF_INFO("Executor", "Executing {} statement", astNodeTypeToString(ast->type));
     }
 
     try {
@@ -94,36 +102,35 @@ nlohmann::json QueryExecutor::execute(const ASTNodePtr& ast) {
                 result = executeDropTable(static_cast<DropTableStmt*>(ast.get()));
                 break;
             default:
-                if (enableLogging) LOG_ERROR("Executor", "Unknown statement type");
+                if (enableLogging) LOGF_ERROR("Executor", "Unknown statement type");
                 return {{"error", "Unknown statement type"}};
         }
 
-        if (enableLogging) LOG_SUCCESS("Executor", "Execution completed successfully");
+        if (enableLogging) LOGF_SUCCESS("Executor", "Execution completed successfully");
         return result;
 
     } catch (const std::exception& e) {
-        if (enableLogging) LOG_ERROR("Executor", "Execution failed: " + std::string(e.what()));
+        if (enableLogging) LOGF_ERROR("Executor", "Execution failed: {}", e.what());
         return {{"error", e.what()}};
     }
 }
 
 nlohmann::json QueryExecutor::executeSelect(const SelectStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing SELECT from table: " + stmt->tableName);
+        LOGF_INFO("Executor", "Executing SELECT from table: {}", stmt->tableName);
 
         if (stmt->columns.empty()) {
-            LOG_DEBUG("Executor", "Selecting all columns (*)");
+            LOGF_DEBUG("Executor", "Selecting all columns (*)");
         } else {
-            LOG_DEBUG("Executor", "Selecting " + std::to_string(stmt->columns.size()) + " columns");
+            LOGF_DEBUG("Executor", "Selecting {} columns", stmt->columns.size());
         }
     }
 
     auto predicate = createPredicate(stmt->whereClause.get());
-
     auto result = storage->selectRows(stmt->tableName, stmt->columns, predicate);
 
     if (enableLogging && result.contains("data") && result["data"].is_array()) {
-        LOG_SUCCESS("Executor", "Selected " + std::to_string(result["data"].size()) + " rows");
+        LOGF_SUCCESS("Executor", "Selected {} rows", result["data"].size());
     }
 
     return result;
@@ -131,8 +138,8 @@ nlohmann::json QueryExecutor::executeSelect(const SelectStmt* stmt) {
 
 nlohmann::json QueryExecutor::executeInsert(const InsertStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing INSERT into table: " + stmt->tableName);
-        LOG_DEBUG("Executor", "Inserting " + std::to_string(stmt->values.size()) + " row(s)");
+        LOGF_INFO("Executor", "Executing INSERT into table: {}", stmt->tableName);
+        LOGF_DEBUG("Executor", "Inserting {} row(s)", stmt->values.size());
     }
 
     nlohmann::json result;
@@ -145,7 +152,7 @@ nlohmann::json QueryExecutor::executeInsert(const InsertStmt* stmt) {
     }
 
     if (enableLogging) {
-        LOG_SUCCESS("Executor", "Inserted " + std::to_string(rowsInserted) + " row(s)");
+        LOGF_SUCCESS("Executor", "Inserted {} row(s)", rowsInserted);
     }
 
     result["status"] = "success";
@@ -155,11 +162,11 @@ nlohmann::json QueryExecutor::executeInsert(const InsertStmt* stmt) {
 
 nlohmann::json QueryExecutor::executeUpdate(const UpdateStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing UPDATE on table: " + stmt->tableName);
-        LOG_DEBUG("Executor", "Setting " + std::to_string(stmt->assignments.size()) + " column(s)");
+        LOGF_INFO("Executor", "Executing UPDATE on table: {}", stmt->tableName);
+        LOGF_DEBUG("Executor", "Setting {} column(s)", stmt->assignments.size());
 
         if (!stmt->whereClause) {
-            LOG_WARNING("Executor", "UPDATE without WHERE will affect all rows!");
+            LOGF_WARNING("Executor", "UPDATE without WHERE will affect all rows!");
         }
     }
 
@@ -167,7 +174,7 @@ nlohmann::json QueryExecutor::executeUpdate(const UpdateStmt* stmt) {
     int rowsUpdated = storage->updateRows(stmt->tableName, stmt->assignments, predicate);
 
     if (enableLogging) {
-        LOG_SUCCESS("Executor", "Updated " + std::to_string(rowsUpdated) + " row(s)");
+        LOGF_SUCCESS("Executor", "Updated {} row(s)", rowsUpdated);
     }
 
     nlohmann::json result;
@@ -178,10 +185,10 @@ nlohmann::json QueryExecutor::executeUpdate(const UpdateStmt* stmt) {
 
 nlohmann::json QueryExecutor::executeDelete(const DeleteStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing DELETE from table: " + stmt->tableName);
+        LOGF_INFO("Executor", "Executing DELETE from table: {}", stmt->tableName);
 
         if (!stmt->whereClause) {
-            LOG_WARNING("Executor", "DELETE without WHERE will delete ALL rows!");
+            LOGF_WARNING("Executor", "DELETE without WHERE will delete ALL rows!");
         }
     }
 
@@ -189,7 +196,7 @@ nlohmann::json QueryExecutor::executeDelete(const DeleteStmt* stmt) {
     int rowsDeleted = storage->deleteRows(stmt->tableName, predicate);
 
     if (enableLogging) {
-        LOG_SUCCESS("Executor", "Deleted " + std::to_string(rowsDeleted) + " row(s)");
+        LOGF_SUCCESS("Executor", "Deleted {} row(s)", rowsDeleted);
     }
 
     nlohmann::json result;
@@ -200,25 +207,24 @@ nlohmann::json QueryExecutor::executeDelete(const DeleteStmt* stmt) {
 
 nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing CREATE TABLE: " + stmt->tableName);
-        LOG_DEBUG("Executor", "Creating table with " + std::to_string(stmt->columns.size()) + " column(s)");
+        LOGF_INFO("Executor", "Executing CREATE TABLE: {}", stmt->tableName);
+        LOGF_DEBUG("Executor", "Creating table with {} column(s)", stmt->columns.size());
 
-        // Log table options
         if (!stmt->options.allowedTypes.empty()) {
-            std::string typesStr = "Allowed types: ";
+            utils::StringBuilder typesStr(256);
+            typesStr << "Allowed types: ";
             for (auto type : stmt->options.allowedTypes) {
-                typesStr += dataTypeToString(type) + " ";
+                typesStr << std::format("{} ", dataTypeToString(type));
             }
-            LOG_DEBUG("Executor", typesStr);
+            LOGF_DEBUG("Executor", "{}", std::move(typesStr).str());
         }
-        LOG_DEBUG("Executor", "Max column name length: " + std::to_string(stmt->options.maxColumnNameLength));
-        LOG_DEBUG("Executor", "Max string length: " + std::to_string(stmt->options.maxStringLength));
-        LOG_DEBUG("Executor", "GC frequency: " + std::to_string(stmt->options.gcFrequencyDays) + " days");
+        LOGF_DEBUG("Executor", "Max column name length: {}", stmt->options.maxColumnNameLength);
+        LOGF_DEBUG("Executor", "Max string length: {}", stmt->options.maxStringLength);
+        LOGF_DEBUG("Executor", "GC frequency: {} days", stmt->options.gcFrequencyDays);
     }
 
-    // Validate options
     if (!stmt->options.validate()) {
-        LOG_ERROR("Executor", "Invalid table options");
+        LOGF_ERROR("Executor", "Invalid table options");
         nlohmann::json result;
         result["status"] = "error";
         result["message"] = "Invalid table options";
@@ -240,9 +246,9 @@ nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
 
     if (enableLogging) {
         if (success) {
-            LOG_SUCCESS("Executor", "Table '" + stmt->tableName + "' created successfully");
+            LOGF_SUCCESS("Executor", "Table '{}' created successfully", stmt->tableName);
         } else {
-            LOG_ERROR("Executor", "Failed to create table '" + stmt->tableName + "'");
+            LOGF_ERROR("Executor", "Failed to create table '{}'", stmt->tableName);
         }
     }
 
@@ -251,7 +257,7 @@ nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
 
 nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing ALTER TABLE on: " + stmt->tableName);
+        LOGF_INFO("Executor", "Executing ALTER TABLE on: {}", stmt->tableName);
     }
 
     nlohmann::json result;
@@ -261,7 +267,7 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
     switch (stmt->alterType) {
         case AlterTableStmt::AlterType::RENAME_TABLE:
             if (enableLogging) {
-                LOG_DEBUG("Executor", "Renaming table to: " + stmt->newTableName);
+                LOGF_DEBUG("Executor", "Renaming table to: {}", stmt->newTableName);
             }
             success = storage->renameTable(stmt->tableName, stmt->newTableName);
             message = success ? "Table renamed successfully" : "Failed to rename table";
@@ -269,7 +275,7 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
 
         case AlterTableStmt::AlterType::RENAME_COLUMN:
             if (enableLogging) {
-                LOG_DEBUG("Executor", "Renaming column '" + stmt->columnName + "' to '" + stmt->newColumnName + "'");
+                LOGF_DEBUG("Executor", "Renaming column '{}' to '{}'", stmt->columnName, stmt->newColumnName);
             }
             success = storage->renameColumn(stmt->tableName, stmt->columnName, stmt->newColumnName);
             message = success ? "Column renamed successfully" : "Failed to rename column";
@@ -277,15 +283,15 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
 
         case AlterTableStmt::AlterType::ALTER_COLUMN_TYPE:
             if (enableLogging) {
-                LOG_DEBUG("Executor", "Changing column '" + stmt->columnName + "' type to: " + stmt->newDataType);
+                LOGF_DEBUG("Executor", "Changing column '{}' type to: {}", stmt->columnName, stmt->newDataType);
             }
             success = storage->alterColumnType(stmt->tableName, stmt->columnName, stmt->newParsedType);
             message = success ? "Column type changed successfully" : "Failed to change column type";
             break;
 
-        case AlterTableStmt::AlterType::DROP_COLUMN:
+                case AlterTableStmt::AlterType::DROP_COLUMN:
             if (enableLogging) {
-                LOG_DEBUG("Executor", "Dropping column '" + stmt->columnName + "'");
+                LOGF_DEBUG("Executor", "Dropping column '{}'", stmt->columnName);
             }
             success = storage->dropColumn(stmt->tableName, stmt->columnName);
             message = success ? "Column dropped successfully" : "Failed to drop column";
@@ -297,9 +303,9 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
 
     if (enableLogging) {
         if (success) {
-            LOG_SUCCESS("Executor", message);
+            LOGF_SUCCESS("Executor", "{}", message);
         } else {
-            LOG_ERROR("Executor", message);
+            LOGF_ERROR("Executor", "{}", message);
         }
     }
 
@@ -308,32 +314,30 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
 
 nlohmann::json QueryExecutor::executeDropTable(const DropTableStmt* stmt) {
     if (enableLogging) {
-        LOG_INFO("Executor", "Executing DROP TABLE: " + stmt->tableName);
+        LOGF_INFO("Executor", "Executing DROP TABLE: {}", stmt->tableName);
     }
 
     bool success = storage->dropTable(stmt->tableName);
-
     nlohmann::json result;
 
     if (success) {
         result["status"] = "success";
-        result["message"] = "Table '" + stmt->tableName + "' dropped successfully";
+        result["message"] = std::format("Table '{}' dropped successfully", stmt->tableName);
         if (enableLogging) {
-            LOG_SUCCESS("Executor", "Table '" + stmt->tableName + "' dropped successfully");
+            LOGF_SUCCESS("Executor", "Table '{}' dropped successfully", stmt->tableName);
         }
     } else {
         if (stmt->ifExists) {
-            // Если используется IF EXISTS, не считаем отсутствие таблицы ошибкой
             result["status"] = "success";
-            result["message"] = "Table '" + stmt->tableName + "' does not exist (IF EXISTS specified)";
+            result["message"] = std::format("Table '{}' does not exist (IF EXISTS specified)", stmt->tableName);
             if (enableLogging) {
-                LOG_INFO("Executor", "Table '" + stmt->tableName + "' does not exist (IF EXISTS specified)");
+                LOGF_INFO("Executor", "Table '{}' does not exist (IF EXISTS specified)", stmt->tableName);
             }
         } else {
             result["status"] = "error";
-            result["message"] = "Table '" + stmt->tableName + "' does not exist";
+            result["message"] = std::format("Table '{}' does not exist", stmt->tableName);
             if (enableLogging) {
-                LOG_ERROR("Executor", "Table '" + stmt->tableName + "' does not exist");
+                LOGF_ERROR("Executor", "Table '{}' does not exist", stmt->tableName);
             }
         }
     }
@@ -381,7 +385,6 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
     }
 }
 
-// Helper function for type-aware value comparison
 bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
     if (op == BinaryExpr::Operator::LIKE) {
         if (!std::holds_alternative<std::string>(left) || !std::holds_alternative<std::string>(right)) {
@@ -412,7 +415,6 @@ bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator o
         }
     }
 
-    // Default strict comparison for non-numeric types (string, bool, etc.)
     switch (op) {
         case BinaryExpr::Operator::EQ: return left == right;
         case BinaryExpr::Operator::NE: return left != right;
@@ -434,17 +436,16 @@ bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json&
 
         if (binExpr->op == BinaryExpr::Operator::AND) {
             bool left = evaluatePredicate(binExpr->left.get(), row);
-            if (!left) return false; // Short-circuit
+            if (!left) return false;
             return evaluatePredicate(binExpr->right.get(), row);
         }
 
         if (binExpr->op == BinaryExpr::Operator::OR) {
             bool left = evaluatePredicate(binExpr->left.get(), row);
-            if (left) return true; // Short-circuit
+            if (left) return true;
             return evaluatePredicate(binExpr->right.get(), row);
         }
 
-        // Comparison operators (including LIKE)
         Value leftVal = evaluateExpression(binExpr->left.get(), row);
         Value rightVal = evaluateExpression(binExpr->right.get(), row);
 
@@ -459,7 +460,6 @@ std::function<bool(const nlohmann::json&)> QueryExecutor::createPredicate(const 
         return [](const nlohmann::json&) { return true; };
     }
 
-    // Check cache first
     auto it = predicateCache.find(whereClause);
     if (it != predicateCache.end()) {
         return it->second;
@@ -469,33 +469,61 @@ std::function<bool(const nlohmann::json&)> QueryExecutor::createPredicate(const 
         return evaluatePredicate(whereClause, row);
     };
 
-    // Cache the predicate
     predicateCache[whereClause] = predicate;
+
+    cleanupCacheIfNeeded();
 
     return predicate;
 }
 
-void QueryExecutor::appendValueToString(std::string& result, const Value& value) {
-    if (std::holds_alternative<int>(value)) {
-        result += std::to_string(std::get<int>(value));
-    } else if (std::holds_alternative<double>(value)) {
-        result += std::to_string(std::get<double>(value));
-    } else if (std::holds_alternative<std::string>(value)) {
-        result += '\'';
-        result += std::get<std::string>(value);
-        result += '\'';
-    } else if (std::holds_alternative<bool>(value)) {
-        result += std::get<bool>(value) ? "true" : "false";
-    } else {
-        result += "NULL";
+void QueryExecutor::cleanupCacheIfNeeded() const {
+    if (++cacheCleanupCounter >= CACHE_CLEANUP_INTERVAL) {
+        if (predicateCache.size() > 100) {
+            predicateCache.clear();
+        }
+        cacheCleanupCounter = 0;
     }
 }
 
+void QueryExecutor::appendValueToString(utils::StringBuilder& builder, const Value& value) {
+    std::visit([&builder](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::same_as<T, std::monostate>) {
+            builder << "NULL";
+        } else if constexpr (std::same_as<T, std::string>) {
+            builder << std::format("'{}'", arg);
+        } else if constexpr (std::same_as<T, bool>) {
+            builder << (arg ? "true" : "false");
+        } else {
+            builder << std::format("{}", arg);
+        }
+    }, value);
+}
+
 std::string QueryExecutor::valueToString(const Value& value) {
-    std::string result;
-    result.reserve(32); // Pre-allocate
-    appendValueToString(result, value);
-    return result;
+    utils::StringBuilder builder(32);
+    appendValueToString(builder, value);
+    return std::move(builder).str();
+}
+
+// Batch operations для OptimizedQueryExecutor
+nlohmann::json OptimizedQueryExecutor::executeBatch(const std::vector<ASTNodePtr>& statements) {
+    nlohmann::json results = nlohmann::json::array();
+
+    for (const auto& stmt : statements) {
+        auto result = execute(stmt);
+        results.push_back(result);
+
+        if (result.contains("error")) {
+            break;
+        }
+    }
+
+    return nlohmann::json{
+        {"status", "success"},
+        {"batch_results", results},
+        {"executed_count", results.size()}
+    };
 }
 
 }

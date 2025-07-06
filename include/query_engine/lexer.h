@@ -3,13 +3,15 @@
 #include <vector>
 #include <unordered_map>
 #include <string_view>
+#include <array>
+#include <algorithm>
 
 namespace query_engine {
 
     class Lexer {
     public:
-        explicit Lexer(const std::string& source);
-        std::vector<Token> tokenize();
+        explicit Lexer(std::string_view source);
+        [[nodiscard]] std::vector<Token> tokenize();
 
     private:
         std::string source;
@@ -17,26 +19,26 @@ namespace query_engine {
         size_t current = 0;
         size_t line = 1;
         size_t column = 1;
-        static thread_local char upperBuffer[256];
+        static thread_local std::array<char, 256> upperBuffer;
 
         static const std::unordered_map<std::string_view, TokenType> keywords;
 
-        bool isAtEnd() const { return current >= source.length(); }
+        [[nodiscard]] constexpr bool isAtEnd() const noexcept { return current >= source.length(); }
         char advance();
-        char peek() const;
-        char peekNext() const;
+        [[nodiscard]] char peek() const;
+        [[nodiscard]] char peekNext() const;
         bool match(char expected);
 
         void skipWhitespace();
         void skipComment();
 
-        Token scanToken();
-        Token identifier();
-        Token number();
-        Token string();
+        [[nodiscard]] Token scanToken();
+        [[nodiscard]] Token identifier();
+        [[nodiscard]] Token number();
+        [[nodiscard]] Token string();
 
-        Token makeToken(TokenType type, const std::string& lexeme);
-        Token errorToken(const std::string& message);
+        [[nodiscard]] Token makeToken(TokenType type, std::string_view lexeme);
+        [[nodiscard]] Token errorToken(std::string_view message);
     };
 
 }

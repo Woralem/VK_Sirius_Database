@@ -51,11 +51,11 @@ namespace query_engine {
         size_t line;
         size_t column;
 
-        Token(TokenType type, const std::string& lexeme, size_t line, size_t column)
+        Token(TokenType type, std::string_view lexeme, size_t line, size_t column)
             : type(type), lexeme(lexeme), line(line), column(column) {}
     };
 
-    std::string tokenTypeToString(TokenType type);
+    [[nodiscard]] std::string_view tokenTypeToString(TokenType type) noexcept;
 
     inline std::ostream& operator<<(std::ostream& os, const query_engine::TokenType& type) {
         os << tokenTypeToString(type);

@@ -3,7 +3,7 @@
 #include "query_engine/executor.h"
 
 DatabaseManager::DatabaseManager() {
-    createDatabase("default");
+    (void)createDatabase("default");
 }
 
 bool DatabaseManager::createDatabase(const std::string& name) {
@@ -54,9 +54,10 @@ bool DatabaseManager::deleteDatabase(const std::string& name) {
     return databases.erase(name) > 0;
 }
 
-std::vector<std::string> DatabaseManager::listDatabases() {
+std::vector<std::string> DatabaseManager::listDatabases() const {
     std::lock_guard<std::mutex> lock(db_mutex);
     std::vector<std::string> names;
+    names.reserve(databases.size());
 
     for (const auto& pair : databases) {
         names.push_back(pair.first);

@@ -17,14 +17,14 @@ private:
         std::shared_ptr<OptimizedInMemoryStorage>,
         std::shared_ptr<query_engine::OptimizedQueryExecutor>
     >> databases;
-    std::mutex db_mutex;
+    mutable std::mutex db_mutex;
 
 public:
     DatabaseManager();
-    
-    bool createDatabase(const std::string& name);
-    bool renameDatabase(const std::string& oldName, const std::string& newName);
-    bool deleteDatabase(const std::string& name);
-    std::vector<std::string> listDatabases();
-    std::shared_ptr<query_engine::OptimizedQueryExecutor> getExecutor(const std::string& name);
+
+    [[nodiscard]] bool createDatabase(const std::string& name);
+    [[nodiscard]] bool renameDatabase(const std::string& oldName, const std::string& newName);
+    [[nodiscard]] bool deleteDatabase(const std::string& name);
+    [[nodiscard]] std::vector<std::string> listDatabases() const;
+    [[nodiscard]] std::shared_ptr<query_engine::OptimizedQueryExecutor> getExecutor(const std::string& name);
 };

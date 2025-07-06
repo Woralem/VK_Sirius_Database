@@ -2,6 +2,7 @@
 #include "api/database_manager.h"
 #include "api/json_handler.h"
 #include <iostream>
+#include <format>
 
 HttpServer::HttpServer() : dbManager(std::make_shared<DatabaseManager>()) {
     setupRoutes();
@@ -79,6 +80,6 @@ void HttpServer::setupCorsRoutes() {
 
 void HttpServer::run(int port) {
     CROW_LOG_INFO << "Database Server starting...";
-    std::cout << "Database Server is running on http://localhost:" << port << std::endl;
+    std::cout << std::format("Database Server is running on http://localhost:{}\n", port);
     app.port(port).multithreaded().run();
 }

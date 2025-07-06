@@ -4,6 +4,8 @@
 #include <sstream>
 #include <iomanip>
 #include <regex>
+#include <format>
+#include <ranges>
 #include "query_engine/lexer.h"
 #include "query_engine/parser.h"
 #include "query_engine/executor.h"
@@ -18,32 +20,32 @@ private:
     std::map<std::string, json> tables;
     std::map<std::string, std::vector<ColumnDef>> schemas;
 
-    bool isValidInteger(const std::string& str) {
+    [[nodiscard]] bool isValidInteger(std::string_view str) const {
         if (str.empty()) return false;
-        std::regex intRegex("^[-+]?\\d+$");
-        return std::regex_match(str, intRegex);
+        static const std::regex intRegex("^[-+]?\\d+$");
+        return std::regex_match(str.begin(), str.end(), intRegex);
     }
 
-    bool isValidDouble(const std::string& str) {
+    [[nodiscard]] bool isValidDouble(std::string_view str) const {
         if (str.empty()) return false;
-        std::regex doubleRegex("^[-+]?\\d*\\.?\\d+([eE][-+]?\\d+)?$");
-        return std::regex_match(str, doubleRegex);
+        static const std::regex doubleRegex("^[-+]?\\d*\\.?\\d+([eE][-+]?\\d+)?$");
+        return std::regex_match(str.begin(), str.end(), doubleRegex);
     }
 
-    bool isValidBoolean(const std::string& str) {
-        std::string lower = str;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    [[nodiscard]] bool isValidBoolean(std::string_view str) const {
+        std::string lower(str);
+        std::ranges::transform(lower, lower.begin(), ::tolower);
         return lower == "true" || lower == "false" || lower == "1" || lower == "0" ||
                lower == "yes" || lower == "no" || lower == "on" || lower == "off";
     }
 
-    bool stringToBoolean(const std::string& str) {
-        std::string lower = str;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    [[nodiscard]] bool stringToBoolean(std::string_view str) const {
+        std::string lower(str);
+        std::ranges::transform(lower, lower.begin(), ::tolower);
         return lower == "true" || lower == "1" || lower == "yes" || lower == "on";
     }
 
-    json convertValue(const json& value, DataType fromType, DataType toType) {
+    [[nodiscard]] json convertValue(const json& value, DataType fromType, DataType toType) const {
         if (value.is_null()) {
             return nullptr;
         }
@@ -57,13 +59,13 @@ private:
                         case DataType::DOUBLE:
                             return static_cast<int>(std::round(value.get<double>()));
                         case DataType::VARCHAR: {
-                            std::string str = value.get<std::string>();
+                            std::string_view str = value.get<std::string>();
                             if (isValidInteger(str)) {
-                                return std::stoi(str);
+                                return std::stoi(std::string(str));
                             } else if (isValidDouble(str)) {
-                                return static_cast<int>(std::round(std::stod(str)));
+                                return static_cast<int>(std::round(std::stod(std::string(str))));
                             } else {
-                                LOG_WARNING("Storage", "Cannot convert '" + str + "' to INT, setting to NULL");
+                                LOG_WARNING("Storage", std::format("Cannot convert '{}' to INT, setting to NULL", str));
                                 return nullptr;
                             }
                         }
@@ -81,11 +83,11 @@ private:
                         case DataType::DOUBLE:
                             return value;
                         case DataType::VARCHAR: {
-                            std::string str = value.get<std::string>();
+                            std::string_view str = value.get<std::string>();
                             if (isValidDouble(str) || isValidInteger(str)) {
-                                return std::stod(str);
+                                return std::stod(std::string(str));
                             } else {
-                                LOG_WARNING("Storage", "Cannot convert '" + str + "' to DOUBLE, setting to NULL");
+                                LOG_WARNING("Storage", std::format("Cannot convert '{}' to DOUBLE, setting to NULL", str));
                                 return nullptr;
                             }
                         }
@@ -100,12 +102,8 @@ private:
                     switch (fromType) {
                         case DataType::INT:
                             return std::to_string(value.get<int>());
-                        case DataType::DOUBLE: {
-                            double d = value.get<double>();
-                            std::ostringstream oss;
-                            oss << d;
-                            return oss.str();
-                        }
+                        case DataType::DOUBLE:
+                            return std::format("{}", value.get<double>());
                         case DataType::VARCHAR:
                             return value;
                         case DataType::BOOLEAN:
@@ -122,11 +120,11 @@ private:
                         case DataType::DOUBLE:
                             return value.get<double>() != 0.0;
                         case DataType::VARCHAR: {
-                            std::string str = value.get<std::string>();
+                            std::string_view str = value.get<std::string>();
                             if (isValidBoolean(str)) {
                                 return stringToBoolean(str);
                             } else {
-                                LOG_WARNING("Storage", "Cannot convert '" + str + "' to BOOLEAN, setting to NULL");
+                                LOG_WARNING("Storage", std::format("Cannot convert '{}' to BOOLEAN, setting to NULL", str));
                                 return nullptr;
                             }
                         }
@@ -138,16 +136,16 @@ private:
                 }
 
                 default:
-                    LOG_ERROR("Storage", "Unsupported target type: " + dataTypeToString(toType));
+                    LOG_ERROR("Storage", std::format("Unsupported target type: {}", dataTypeToString(toType)));
                     return nullptr;
             }
         } catch (const std::exception& e) {
-            LOG_ERROR("Storage", "Error converting value: " + std::string(e.what()) + ", setting to NULL");
+            LOG_ERROR("Storage", std::format("Error converting value: {}, setting to NULL", e.what()));
             return nullptr;
         }
     }
 
-    DataType jsonTypeToDataType(const json& value) {
+    [[nodiscard]] DataType jsonTypeToDataType(const json& value) const {
         if (value.is_null()) return DataType::UNKNOWN_TYPE;
         if (value.is_number_integer()) return DataType::INT;
         if (value.is_number_float()) return DataType::DOUBLE;
@@ -156,11 +154,22 @@ private:
         return DataType::UNKNOWN_TYPE;
     }
 
+    void setJsonValue(json& row, std::string_view key, const Value& value) {
+        std::visit([&row, &key](auto&& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, std::monostate>) {
+                row[std::string(key)] = nullptr;
+            } else {
+                row[std::string(key)] = arg;
+            }
+        }, value);
+    }
+
 public:
-    bool createTable(const std::string& tableName,
+    [[nodiscard]] bool createTable(const std::string& tableName,
                     const std::vector<ColumnDef*>& columns,
                     const TableOptions& options = TableOptions()) override {
-        LOG_INFO("Storage", "Creating table '" + tableName + "' in storage");
+        LOG_INFO("Storage", std::format("Creating table '{}' in storage", tableName));
 
         schemas[tableName].clear();
         for (auto* col : columns) {
@@ -169,17 +178,17 @@ public:
 
         tables[tableName] = json::array();
 
-        LOG_SUCCESS("Storage", "Table '" + tableName + "' created in storage");
+        LOG_SUCCESS("Storage", std::format("Table '{}' created in storage", tableName));
         return true;
     }
 
-    bool insertRow(const std::string& tableName,
+    [[nodiscard]] bool insertRow(const std::string& tableName,
                   const std::vector<std::string>& columns,
                   const std::vector<Value>& values) override {
-        LOG_INFO("Storage", "Inserting row into table '" + tableName + "'");
+        LOG_INFO("Storage", std::format("Inserting row into table '{}'", tableName));
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return false;
         }
 
@@ -188,48 +197,32 @@ public:
         if (columns.empty()) {
             for (size_t i = 0; i < values.size() && i < schemas[tableName].size(); i++) {
                 std::string colName = schemas[tableName][i].name;
-                if (std::holds_alternative<int>(values[i])) {
-                    row[colName] = std::get<int>(values[i]);
-                } else if (std::holds_alternative<double>(values[i])) {
-                    row[colName] = std::get<double>(values[i]);
-                } else if (std::holds_alternative<std::string>(values[i])) {
-                    row[colName] = std::get<std::string>(values[i]);
-                } else {
-                    row[colName] = nullptr;
-                }
+                setJsonValue(row, colName, values[i]);
             }
         } else {
             for (size_t i = 0; i < columns.size() && i < values.size(); i++) {
-                if (std::holds_alternative<int>(values[i])) {
-                    row[columns[i]] = std::get<int>(values[i]);
-                } else if (std::holds_alternative<double>(values[i])) {
-                    row[columns[i]] = std::get<double>(values[i]);
-                } else if (std::holds_alternative<std::string>(values[i])) {
-                    row[columns[i]] = std::get<std::string>(values[i]);
-                } else {
-                    row[columns[i]] = nullptr;
-                }
+                setJsonValue(row, columns[i], values[i]);
             }
         }
 
         tables[tableName].push_back(row);
 
         LOG_SUCCESS("Storage", "Row inserted successfully");
-        LOG_DEBUG("Storage", "Row data: " + row.dump());
+        LOG_DEBUG("Storage", std::format("Row data: {}", row.dump()));
         return true;
     }
 
-    json selectRows(const std::string& tableName,
+    [[nodiscard]] json selectRows(const std::string& tableName,
                    const std::vector<std::string>& columns,
                    std::function<bool(const json&)> predicate) override {
-        LOG_INFO("Storage", "Selecting from table '" + tableName + "'");
+        LOG_INFO("Storage", std::format("Selecting from table '{}'", tableName));
 
         json result;
         result["status"] = "success";
         result["data"] = json::array();
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             result["status"] = "error";
             result["message"] = "Table does not exist";
             return result;
@@ -256,19 +249,17 @@ public:
             }
         }
 
-        LOG_SUCCESS("Storage", "Selected " + std::to_string(matchedRows) +
-                              " out of " + std::to_string(totalRows) + " rows");
-
+        LOG_SUCCESS("Storage", std::format("Selected {} out of {} rows", matchedRows, totalRows));
         return result;
     }
 
-    int updateRows(const std::string& tableName,
+    [[nodiscard]] int updateRows(const std::string& tableName,
                   const std::vector<std::pair<std::string, Value>>& assignments,
                   std::function<bool(const json&)> predicate) override {
-        LOG_INFO("Storage", "Updating rows in table '" + tableName + "'");
+        LOG_INFO("Storage", std::format("Updating rows in table '{}'", tableName));
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return 0;
         }
 
@@ -277,80 +268,77 @@ public:
         for (auto& row : tables[tableName]) {
             if (predicate(row)) {
                 for (const auto& [col, val] : assignments) {
-                    if (std::holds_alternative<int>(val)) {
-                        row[col] = std::get<int>(val);
-                    } else if (std::holds_alternative<double>(val)) {
-                        row[col] = std::get<double>(val);
-                    } else if (std::holds_alternative<std::string>(val)) {
-                        row[col] = std::get<std::string>(val);
-                    } else {
-                        row[col] = nullptr;
-                    }
+                    setJsonValue(row, col, val);
                 }
                 updatedCount++;
-                LOG_DEBUG("Storage", "Updated row: " + row.dump());
+                LOG_DEBUG("Storage", std::format("Updated row: {}", row.dump()));
             }
         }
 
-        LOG_SUCCESS("Storage", "Updated " + std::to_string(updatedCount) + " rows");
+        LOG_SUCCESS("Storage", std::format("Updated {} rows", updatedCount));
         return updatedCount;
     }
 
-    int deleteRows(const std::string& tableName,
+    [[nodiscard]] int deleteRows(const std::string& tableName,
                   std::function<bool(const json&)> predicate) override {
-        LOG_INFO("Storage", "Deleting rows from table '" + tableName + "'");
+        LOG_INFO("Storage", std::format("Deleting rows from table '{}'", tableName));
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return 0;
         }
 
         int deletedCount = 0;
         auto& tableData = tables[tableName];
 
-        for (auto it = tableData.begin(); it != tableData.end();) {
-            if (predicate(*it)) {
-                LOG_DEBUG("Storage", "Deleting row: " + it->dump());
-                it = tableData.erase(it);
-                deletedCount++;
-            } else {
-                ++it;
-            }
-        }
+        tableData.erase(
+            std::remove_if(tableData.begin(), tableData.end(),
+                [&predicate, &deletedCount](const json& row) {
+                    if (predicate(row)) {
+                        LOG_DEBUG("Storage", std::format("Deleting row: {}", row.dump()));
+                        deletedCount++;
+                        return true;
+                    }
+                    return false;
+                }),
+            tableData.end()
+        );
 
-        LOG_SUCCESS("Storage", "Deleted " + std::to_string(deletedCount) + " rows");
+        LOG_SUCCESS("Storage", std::format("Deleted {} rows", deletedCount));
         return deletedCount;
     }
 
-    // ALTER TABLE operations
-    bool renameTable(const std::string& oldName, const std::string& newName) override {
-        LOG_INFO("Storage", "Renaming table '" + oldName + "' to '" + newName + "'");
+    [[nodiscard]] bool renameTable(const std::string& oldName, const std::string& newName) override {
+        LOG_INFO("Storage", std::format("Renaming table '{}' to '{}'", oldName, newName));
 
         auto it = tables.find(oldName);
         if (it == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + oldName + "' does not exist");
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", oldName));
             return false;
         }
 
-        if (tables.count(newName) > 0) {
-            LOG_ERROR("Storage", "Table '" + newName + "' already exists");
+        if (tables.contains(newName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' already exists", newName));
             return false;
         }
 
-        tables[newName] = std::move(it->second);
-        schemas[newName] = std::move(schemas[oldName]);
-        tables.erase(oldName);
-        schemas.erase(oldName);
+        auto node = tables.extract(oldName);
+        node.key() = newName;
+        tables.insert(std::move(node));
+
+        auto schemaNode = schemas.extract(oldName);
+        schemaNode.key() = newName;
+        schemas.insert(std::move(schemaNode));
 
         LOG_SUCCESS("Storage", "Table renamed successfully");
         return true;
     }
 
-    bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) override {
-        LOG_INFO("Storage", "Renaming column '" + oldColumnName + "' to '" + newColumnName + "' in table '" + tableName + "'");
+    [[nodiscard]] bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) override {
+        LOG_INFO("Storage", std::format("Renaming column '{}' to '{}' in table '{}'", oldColumnName, newColumnName, tableName));
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return false;
         }
 
@@ -374,11 +362,11 @@ public:
         return true;
     }
 
-    bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) override {
-        LOG_INFO("Storage", "Changing type of column '" + columnName + "' to " + dataTypeToString(newType));
+    [[nodiscard]] bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) override {
+        LOG_INFO("Storage", std::format("Changing type of column '{}' to {}", columnName, dataTypeToString(newType)));
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return false;
         }
 
@@ -393,11 +381,11 @@ public:
         }
 
         if (!colDef) {
-            LOG_ERROR("Storage", "Column '" + columnName + "' does not exist");
+            LOG_ERROR("Storage", std::format("Column '{}' does not exist", columnName));
             return false;
         }
 
-        LOG_INFO("Storage", "Converting from " + dataTypeToString(oldType) + " to " + dataTypeToString(newType));
+        LOG_INFO("Storage", std::format("Converting from {} to {}", dataTypeToString(oldType), dataTypeToString(newType)));
 
         int convertedCount = 0;
         int nullCount = 0;
@@ -426,34 +414,29 @@ public:
         }
 
         colDef->parsedType = newType;
-        colDef->dataType = dataTypeToString(newType);
+        colDef->dataType = std::string(dataTypeToString(newType));
 
         LOG_SUCCESS("Storage", "Column type changed successfully!");
-        LOG_INFO("Storage", "Total rows: " + std::to_string(totalCount) +
-                           ", Converted: " + std::to_string(convertedCount) +
-                           ", Set to NULL: " + std::to_string(nullCount));
+        LOG_INFO("Storage", std::format("Total rows: {}, Converted: {}, Set to NULL: {}",
+                                       totalCount, convertedCount, nullCount));
 
         return true;
     }
 
-    bool dropColumn(const std::string& tableName, const std::string& columnName) override {
-        LOG_INFO("Storage", "Dropping column '" + columnName + "' from table '" + tableName + "'");
+    [[nodiscard]] bool dropColumn(const std::string& tableName, const std::string& columnName) override {
+        LOG_INFO("Storage", std::format("Dropping column '{}' from table '{}'", columnName, tableName));
 
-        if (tables.find(tableName) == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+        if (!tables.contains(tableName)) {
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return false;
         }
 
-        bool columnExists = false;
-        for (const auto& col : schemas[tableName]) {
-            if (col.name == columnName) {
-                columnExists = true;
-                break;
-            }
-        }
+        bool columnExists = std::ranges::any_of(schemas[tableName], [&columnName](const auto& col) {
+            return col.name == columnName;
+        });
 
         if (!columnExists) {
-            LOG_ERROR("Storage", "Column '" + columnName + "' does not exist");
+            LOG_ERROR("Storage", std::format("Column '{}' does not exist", columnName));
             return false;
         }
 
@@ -463,10 +446,9 @@ public:
         }
 
         schemas[tableName].erase(
-            std::remove_if(schemas[tableName].begin(), schemas[tableName].end(),
-                [&columnName](const ColumnDef& col) {
-                    return col.name == columnName;
-                }),
+            std::ranges::remove_if(schemas[tableName], [&columnName](const ColumnDef& col) {
+                return col.name == columnName;
+            }).begin(),
             schemas[tableName].end()
         );
 
@@ -476,23 +458,23 @@ public:
             }
         }
 
-        LOG_SUCCESS("Storage", "Column '" + columnName + "' dropped successfully");
+        LOG_SUCCESS("Storage", std::format("Column '{}' dropped successfully", columnName));
         return true;
     }
 
-    bool dropTable(const std::string& tableName) override {
-        LOG_INFO("Storage", "Dropping table '" + tableName + "'");
+    [[nodiscard]] bool dropTable(const std::string& tableName) override {
+        LOG_INFO("Storage", std::format("Dropping table '{}'", tableName));
 
         auto it = tables.find(tableName);
         if (it == tables.end()) {
-            LOG_ERROR("Storage", "Table '" + tableName + "' does not exist");
+            LOG_ERROR("Storage", std::format("Table '{}' does not exist", tableName));
             return false;
         }
 
         tables.erase(it);
         schemas.erase(tableName);
 
-        LOG_SUCCESS("Storage", "Table '" + tableName + "' dropped successfully");
+        LOG_SUCCESS("Storage", std::format("Table '{}' dropped successfully", tableName));
         return true;
     }
 };
@@ -501,7 +483,7 @@ void printResult(const json& result) {
     std::cout << "\n\033[1;32m=== QUERY RESULT ===\033[0m\n";
 
     if (result.contains("error")) {
-        std::cout << "\033[91mERROR: " << result["error"] << "\033[0m\n";
+        std::cout << std::format("\033[91mERROR: {}\033[0m\n", result["error"].get<std::string>());
         return;
     }
 
@@ -520,40 +502,40 @@ void printResult(const json& result) {
 
         std::cout << "\033[96m";
         for (const auto& col : columns) {
-            std::cout << std::left << std::setw(15) << col << " ";
+            std::cout << std::format("{:15} ", col);
         }
         std::cout << "\033[0m\n";
 
         std::cout << "\033[90m";
         for (const auto& col : columns) {
-            std::cout << std::string(15, '-') << " ";
+            std::cout << std::format("{:-<15} ", "");
         }
         std::cout << "\033[0m\n";
 
         for (const auto& row : data) {
             for (const auto& col : columns) {
-                std::stringstream ss;
+                std::string value_str;
                 if (row.contains(col)) {
                     if (row[col].is_null()) {
-                        ss << "NULL";
+                        value_str = "NULL";
                     } else if (row[col].is_string()) {
-                        ss << row[col].get<std::string>();
+                        value_str = row[col].get<std::string>();
                     } else {
-                        ss << row[col];
+                        value_str = row[col].dump();
                     }
                 } else {
-                    ss << "NULL";
+                    value_str = "NULL";
                 }
-                std::cout << std::left << std::setw(15) << ss.str() << " ";
+                std::cout << std::format("{:15} ", value_str);
             }
             std::cout << "\n";
         }
 
-        std::cout << "\033[92m" << data.size() << " row(s) returned\033[0m\n";
+        std::cout << std::format("\033[92m{} row(s) returned\033[0m\n", data.size());
     } else if (result.contains("rows_affected")) {
-        std::cout << "\033[92m" << result["rows_affected"] << " row(s) affected\033[0m\n";
+        std::cout << std::format("\033[92m{} row(s) affected\033[0m\n", result["rows_affected"].get<int>());
     } else if (result.contains("message")) {
-        std::cout << "\033[92m" << result["message"] << "\033[0m\n";
+        std::cout << std::format("\033[92m{}\033[0m\n", result["message"].get<std::string>());
     }
 }
 
@@ -610,8 +592,10 @@ int main() {
         std::cout << "\n\033[1;33mSQL> \033[0m";
         std::getline(std::cin, input);
 
-        input.erase(0, input.find_first_not_of(" \t\n\r"));
-        input.erase(input.find_last_not_of(" \t\n\r") + 1);
+        // Trim whitespace
+        auto trimmed = input | std::views::drop_while(::isspace) | std::views::reverse
+                             | std::views::drop_while(::isspace) | std::views::reverse;
+        input = std::string(trimmed.begin(), trimmed.end());
 
         if (input.empty()) continue;
 
@@ -639,13 +623,13 @@ int main() {
             auto tokens = lexer.tokenize();
 
             Logger::header("PARSING");
-            Parser parser(tokens);
+            Parser parser(std::span{tokens});
             auto ast = parser.parse();
 
             if (parser.hasError()) {
                 std::cout << "\n\033[91m=== PARSE ERRORS ===\033[0m\n";
                 for (const auto& error : parser.getErrors()) {
-                    std::cout << "\033[91m• " << error << "\033[0m\n";
+                    std::cout << std::format("\033[91m• {}\033[0m\n", error);
                 }
                 continue;
             }
@@ -656,7 +640,7 @@ int main() {
             printResult(result);
 
         } catch (const std::exception& e) {
-            std::cout << "\n\033[91mFATAL ERROR: " << e.what() << "\033[0m\n";
+            std::cout << std::format("\n\033[91mFATAL ERROR: {}\033[0m\n", e.what());
         }
     }
 

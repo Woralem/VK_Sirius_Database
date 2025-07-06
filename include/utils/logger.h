@@ -1,8 +1,12 @@
+
 #pragma once
+#include "config.h"
+#include "utils.h"
 #include <iostream>
 #include <string>
-#include <iomanip>
-#include <sstream>
+#include <string_view>
+#include <format>
+#include <type_traits>
 
 namespace utils {
 
@@ -16,7 +20,7 @@ public:
         ERROR
     };
 
-    enum class Color {
+    enum class Color : int {
         RESET = 0,
         BLACK = 30,
         RED = 31,
@@ -36,67 +40,77 @@ public:
         BRIGHT_WHITE = 97
     };
 
-    static void log(Level level, const std::string& component, const std::string& message) {
+    struct ColorAndPrefix {
         Color color;
-        std::string prefix;
-        
-        switch (level) {
-            case Level::DEBUG:
-                color = Color::BRIGHT_BLACK;
-                prefix = "[DEBUG]";
-                break;
-            case Level::INFO:
-                color = Color::BRIGHT_CYAN;
-                prefix = "[INFO ]";
-                break;
-            case Level::SUCCESS:
-                color = Color::BRIGHT_GREEN;
-                prefix = "[OK   ]";
-                break;
-            case Level::WARNING:
-                color = Color::BRIGHT_YELLOW;
-                prefix = "[WARN ]";
-                break;
-            case Level::ERROR:
-                color = Color::BRIGHT_RED;
-                prefix = "[ERROR]";
-                break;
-        }
-        
-        std::cout << "\033[" << static_cast<int>(color) << "m"
-                  << prefix << " "
-                  << std::left << std::setw(15) << ("[" + component + "]")
-                  << message
-                  << "\033[0m" << std::endl;
+        std::string_view prefix;
+    };
+
+    static void log(Level level, std::string_view component, std::string_view message) {
+        const auto [color, prefix] = getColorAndPrefix(level);
+
+        auto formatted = std::format(
+            "\033[{}m{} {:15} {}\033[0m",
+            static_cast<int>(color),
+            prefix,
+            std::format("[{}]", component),
+            message
+        );
+
+        std::cout << formatted << std::endl;
     }
-    
+
     static void separator() {
         std::cout << "\033[90m" << std::string(80, '-') << "\033[0m" << std::endl;
     }
-    
-    static void header(const std::string& text) {
+
+    static void header(std::string_view text) {
         separator();
-        std::cout << "\033[1;36m" << ">>> " << text << " <<<\033[0m" << std::endl;
+        std::cout << std::format("\033[1;36m>>> {} <<<\033[0m", text) << std::endl;
         separator();
     }
-    
-    static void printBox(const std::string& title, const std::string& content) {
-        std::cout << "\033[94m+- " << title << " " << std::string(75 - title.length(), '-') << "+\033[0m" << std::endl;
 
-        std::istringstream iss(content);
-        std::string line;
-        while (std::getline(iss, line)) {
-            std::cout << "\033[94m|\033[0m " << std::left << std::setw(77) << line << "\033[94m|\033[0m" << std::endl;
+    static void printBox(std::string_view title, std::string_view content) {
+        utils::StringBuilder builder(1024);
+
+        builder << std::format("\033[94m+- {} {:-<{}}\033[0m\n",
+                              title, "+", 75 - title.length());
+
+        auto lines = content | std::views::split('\n') |
+                    std::views::transform([](auto&& range) {
+                        return std::string_view{range.begin(), range.end()};
+                    });
+
+        for (const auto& line : lines) {
+            builder << std::format("\033[94m|\033[0m {:77} \033[94m|\033[0m\n", line);
         }
 
-        std::cout << "\033[94m+" << std::string(78, '-') << "+\033[0m" << std::endl;
+        builder << std::format("\033[94m+{:-<78}+\033[0m", "");
+
+        std::cout << std::move(builder).str() << std::endl;
+    }
+
+private:
+    static constexpr ColorAndPrefix getColorAndPrefix(Level level) noexcept {
+        switch (level) {
+            case Level::DEBUG:   return {Color::BRIGHT_BLACK, "[DEBUG]"};
+            case Level::INFO:    return {Color::BRIGHT_CYAN, "[INFO ]"};
+            case Level::SUCCESS: return {Color::BRIGHT_GREEN, "[OK   ]"};
+            case Level::WARNING: return {Color::BRIGHT_YELLOW, "[WARN ]"};
+            case Level::ERROR:   return {Color::BRIGHT_RED, "[ERROR]"};
+        }
+        return {Color::RESET, "[?????]"};
     }
 };
 
-}
+} // namespace utils
 
 #define LOG_DEBUG(component, message) ::utils::Logger::log(::utils::Logger::Level::DEBUG, component, message)
 #define LOG_INFO(component, message) ::utils::Logger::log(::utils::Logger::Level::INFO, component, message)
 #define LOG_SUCCESS(component, message) ::utils::Logger::log(::utils::Logger::Level::SUCCESS, component, message)
 #define LOG_WARNING(component, message) ::utils::Logger::log(::utils::Logger::Level::WARNING, component, message)
 #define LOG_ERROR(component, message) ::utils::Logger::log(::utils::Logger::Level::ERROR, component, message)
+#define LOGF_DEBUG(component, fmt, ...)   ::utils::Logger::log(::utils::Logger::Level::DEBUG, component, std::format(fmt, __VA_ARGS__))
+#define LOGF_INFO(component, fmt, ...)    ::utils::Logger::log(::utils::Logger::Level::INFO, component, std::format(fmt, __VA_ARGS__))
+#define LOGF_SUCCESS(component, fmt, ...) ::utils::Logger::log(::utils::Logger::Level::SUCCESS, component, std::format(fmt, __VA_ARGS__))
+#define LOGF_WARNING(component, fmt, ...) ::utils::Logger::log(::utils::Logger::Level::WARNING, component, std::format(fmt, __VA_ARGS__))
+#define LOGF_ERROR(component, fmt, ...)   ::utils::Logger::log(::utils::Logger::Level::ERROR, component, std::format(fmt, __VA_ARGS__))

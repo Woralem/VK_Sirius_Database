@@ -6,6 +6,8 @@
 #include <ostream>
 #include <set>
 #include <algorithm>
+#include <compare>
+#include <format>
 
 namespace query_engine {
 
@@ -27,6 +29,14 @@ enum class DataType {
     UNKNOWN_TYPE
 };
 
+inline std::strong_ordering operator<=>(DataType a, DataType b) noexcept {
+    return static_cast<int>(a) <=> static_cast<int>(b);
+}
+
+inline bool operator==(DataType a, DataType b) noexcept {
+    return static_cast<int>(a) == static_cast<int>(b);
+}
+
 // Table creation options
 struct TableOptions {
     // Allowed data types for this table
@@ -44,7 +54,7 @@ struct TableOptions {
     // Garbage collection frequency in days (default: 7, range: 1-365)
     int gcFrequencyDays = 7;
 
-    bool validate() const {
+    [[nodiscard]] constexpr bool validate() const noexcept {
         return maxColumnNameLength > 0 && maxColumnNameLength <= 64 &&
                maxStringLength > 0 && maxStringLength <= (1ULL << 40) &&
                gcFrequencyDays >= 1 && gcFrequencyDays <= 365;
@@ -184,7 +194,7 @@ struct DeleteStmt : public Statement {
 };
 
 // Helper functions
-inline std::string dataTypeToString(DataType type) {
+[[nodiscard]] inline constexpr std::string_view dataTypeToString(DataType type) noexcept {
     switch (type) {
         case DataType::INT: return "INT";
         case DataType::DOUBLE: return "DOUBLE";
@@ -202,8 +212,8 @@ inline std::ostream& operator<<(std::ostream& os, const query_engine::DataType& 
     return os;
 }
 
-inline DataType parseDataType(const std::string& typeStr) {
-    std::string upper = typeStr;
+[[nodiscard]] inline DataType parseDataType(std::string_view typeStr) {
+    std::string upper(typeStr);
     std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
 
     if (upper == "INT" || upper == "INTEGER") return DataType::INT;
@@ -234,7 +244,9 @@ inline std::ostream& operator<<(std::ostream& os, const ASTNode::Type& type) {
         case ASTNode::Type::COLUMN_REF:         os << "COLUMN_REF"; break;
         case ASTNode::Type::VALUE_LIST:         os << "VALUE_LIST"; break;
         case ASTNode::Type::TABLE_OPTIONS:      os << "TABLE_OPTIONS"; break;
-        default: os << "UNKNOWN_AST_NODE(" << static_cast<int>(type) << ")"; break;
+        default:
+            os << "UNKNOWN_AST_NODE(" << static_cast<int>(type) << ")";
+            break;
     }
     return os;
 }

@@ -3,6 +3,9 @@
 #include "query_engine/lexer.h"
 #include "query_engine/parser.h"
 #include "query_engine/executor.h"
+#include "utils.h"
+#include <format>
+#include <ranges>
 
 using json = nlohmann::json;
 
@@ -17,7 +20,9 @@ crow::response JsonHandler::createJsonResponse(int code, const json& body) {
 
 bool JsonHandler::validateDatabaseName(const std::string& name) {
     if (name.empty()) return false;
-    return name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == std::string::npos;
+    return std::ranges::all_of(name, [](char c) {
+        return std::isalnum(c) || c == '_';
+    });
 }
 
 crow::response JsonHandler::handleListDatabases(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
@@ -30,7 +35,7 @@ crow::response JsonHandler::handleListDatabases(const crow::request& req, std::s
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
-            {"message", "Failed to list databases: " + std::string(e.what())}
+            {"message", std::format("Failed to list databases: {}", e.what())}
         });
     }
 }
@@ -70,12 +75,12 @@ crow::response JsonHandler::handleCreateDatabase(const crow::request& req, std::
     } catch (const json::parse_error& e) {
         return createJsonResponse(400, json{
             {"status", "error"},
-            {"message", "Invalid JSON: " + std::string(e.what())}
+            {"message", std::format("Invalid JSON: {}", e.what())}
         });
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
-            {"message", "Failed to create database: " + std::string(e.what())}
+            {"message", std::format("Failed to create database: {}", e.what())}
         });
     }
 }
@@ -118,12 +123,12 @@ crow::response JsonHandler::handleRenameDatabase(const crow::request& req, std::
     } catch (const json::parse_error& e) {
         return createJsonResponse(400, json{
             {"status", "error"},
-            {"message", "Invalid JSON: " + std::string(e.what())}
+            {"message", std::format("Invalid JSON: {}", e.what())}
         });
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
-            {"message", "Failed to rename database: " + std::string(e.what())}
+            {"message", std::format("Failed to rename database: {}", e.what())}
         });
     }
 }
@@ -155,12 +160,12 @@ crow::response JsonHandler::handleDeleteDatabase(const crow::request& req, std::
     } catch (const json::parse_error& e) {
         return createJsonResponse(400, json{
             {"status", "error"},
-            {"message", "Invalid JSON: " + std::string(e.what())}
+            {"message", std::format("Invalid JSON: {}", e.what())}
         });
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
-            {"message", "Failed to delete database: " + std::string(e.what())}
+            {"message", std::format("Failed to delete database: {}", e.what())}
         });
     }
 }
@@ -182,14 +187,15 @@ crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_pt
         if (!executor) {
             return createJsonResponse(404, json{
                 {"status", "error"},
-                {"message", "Database not found: " + database}
+                {"message", std::format("Database not found: {}", database)}
             });
         }
 
         query_engine::Lexer lexer(query_str);
         auto tokens = lexer.tokenize();
 
-        query_engine::Parser parser(tokens);
+        query_engine::Parser parser(std::span<const query_engine::Token>{tokens});
+
         auto ast = parser.parse();
 
         if (parser.hasError()) {
@@ -213,12 +219,12 @@ crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_pt
     } catch (const json::parse_error& e) {
         return createJsonResponse(400, json{
             {"status", "error"},
-            {"message", "Invalid JSON in request body: " + std::string(e.what())}
+            {"message", std::format("Invalid JSON in request body: {}", e.what())}
         });
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
-            {"message", "An internal error occurred: " + std::string(e.what())}
+            {"message", std::format("An internal error occurred: {}", e.what())}
         });
     }
 }

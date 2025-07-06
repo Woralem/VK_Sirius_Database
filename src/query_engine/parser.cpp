@@ -1,7 +1,11 @@
 #include "query_engine/parser.h"
 #include "query_engine/lexer.h"
+#include "config.h"
+#include "utils.h"
 #include <stdexcept>
 #include <algorithm>
+#include <ranges>
+#include <format>
 
 namespace query_engine {
 
@@ -34,7 +38,16 @@ const std::unordered_map<TokenType, BinaryExpr::Operator> Parser::binaryOps = {
     {TokenType::OR, BinaryExpr::Operator::OR},
 };
 
+// Конструкторы
+Parser::Parser(std::span<const Token> tokens) : tokens(tokens.begin(), tokens.end()) {
+    reserveErrorCapacity();
+}
+
 Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {
+    reserveErrorCapacity();
+}
+
+void Parser::reserveErrorCapacity() {
     errors.reserve(10);
 }
 
@@ -66,11 +79,27 @@ ASTNodePtr Parser::parse() {
     return std::move(stmts.front());
 }
 
-bool Parser::isAtEnd() const { return current >= tokens.size() || tokens[current].type == TokenType::END_OF_FILE; }
-Token Parser::peek() const { return tokens[current]; }
-Token Parser::previous() const { return tokens[current > 0 ? current - 1 : 0]; }
-Token Parser::advance() { if (!isAtEnd()) current++; return previous(); }
-bool Parser::check(TokenType type) const { if (isAtEnd()) return false; return peek().type == type; }
+constexpr bool Parser::isAtEnd() const noexcept {
+    return current >= tokens.size() || tokens[current].type == TokenType::END_OF_FILE;
+}
+
+const Token& Parser::peek() const noexcept {
+    return tokens[current];
+}
+
+const Token& Parser::previous() const noexcept {
+    return tokens[current > 0 ? current - 1 : 0];
+}
+
+Token Parser::advance() {
+    if (!isAtEnd()) current++;
+    return previous();
+}
+
+bool Parser::check(TokenType type) const noexcept {
+    if (isAtEnd()) return false;
+    return peek().type == type;
+}
 
 bool Parser::match(std::initializer_list<TokenType> types) {
     for (auto type : types) {
@@ -82,16 +111,20 @@ bool Parser::match(std::initializer_list<TokenType> types) {
     return false;
 }
 
-Token Parser::consume(TokenType type, const std::string& message) {
+Token Parser::consume(TokenType type, std::string_view message) {
     if (check(type)) return advance();
-    std::string error_msg = message + " (got " + tokenTypeToString(peek().type) + " at line " + std::to_string(peek().line) + ")";
+
+    std::string error_msg = std::format("{} (got {} at line {})",
+                                       message,
+                                       tokenTypeToString(peek().type),
+                                       peek().line);
     error(error_msg);
-    throw std::runtime_error(message);
+    throw std::runtime_error(std::string(message));
 }
 
-void Parser::error(const std::string& message) {
+void Parser::error(std::string_view message) {
     if (errors.empty() || errors.back() != message) {
-        errors.push_back(message);
+        errors.emplace_back(message);
     }
 }
 
@@ -100,12 +133,18 @@ void Parser::synchronize() {
     while (!isAtEnd()) {
         if (previous().type == TokenType::SEMICOLON) return;
         switch (peek().type) {
-            case TokenType::CREATE: case TokenType::SELECT: case TokenType::INSERT:
-            case TokenType::UPDATE_KEYWORD: case TokenType::DELETE_KEYWORD: case TokenType::ALTER:
-            case TokenType::DROP: case TokenType::END_OF_FILE:
+            case TokenType::CREATE:
+            case TokenType::SELECT:
+            case TokenType::INSERT:
+            case TokenType::UPDATE_KEYWORD:
+            case TokenType::DELETE_KEYWORD:
+            case TokenType::ALTER:
+            case TokenType::DROP:
+            case TokenType::END_OF_FILE:
                 return;
+            default:
+                advance();
         }
-        advance();
     }
 }
 
@@ -118,11 +157,13 @@ ASTNodePtr Parser::statement() {
     if (check(TokenType::ALTER)) return alterTableStatement();
     if (check(TokenType::DROP)) return dropTableStatement();
 
-    error("Expected a statement (SELECT, INSERT, etc.) but got '" + peek().lexeme + "'");
+    error(std::format("Expected a statement (SELECT, INSERT, etc.) but got '{}'", peek().lexeme));
     throw std::runtime_error("Parsing error: Invalid statement start");
 }
 
-ASTNodePtr Parser::expression() { return parsePrecedence(Precedence::OR); }
+ASTNodePtr Parser::expression() {
+    return parsePrecedence(Precedence::OR);
+}
 
 ASTNodePtr Parser::parsePrecedence(Precedence precedence) {
     advance();
@@ -146,16 +187,20 @@ ASTNodePtr Parser::parsePrecedence(Precedence precedence) {
 ASTNodePtr Parser::primary(Parser* parser) {
     Token token = parser->previous();
     switch (token.type) {
-        case TokenType::NUMBER_LITERAL: case TokenType::STRING_LITERAL: case TokenType::NULL_TOKEN:
+        case TokenType::NUMBER_LITERAL:
+        case TokenType::STRING_LITERAL:
+        case TokenType::NULL_TOKEN:
             return std::make_unique<LiteralExpr>(token.value);
         case TokenType::IDENTIFIER: {
             std::string upper = token.lexeme;
-            std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+            std::ranges::transform(upper, upper.begin(), ::toupper);
             if (upper == "TRUE") return std::make_unique<LiteralExpr>(true);
             if (upper == "FALSE") return std::make_unique<LiteralExpr>(false);
             return std::make_unique<IdentifierExpr>(token.lexeme);
         }
-        default: parser->error("Unexpected token in expression"); return nullptr;
+        default:
+            parser->error("Unexpected token in expression");
+            return nullptr;
     }
 }
 
@@ -167,13 +212,16 @@ ASTNodePtr Parser::grouping(Parser* parser) {
 
 ASTNodePtr Parser::binary(Parser* parser, ASTNodePtr left) {
     Token opToken = parser->previous();
-    auto right = parser->parsePrecedence(static_cast<Precedence>(static_cast<int>(parseRules.at(opToken.type).precedence) + 1));
+    auto right = parser->parsePrecedence(
+        static_cast<Precedence>(static_cast<int>(parseRules.at(opToken.type).precedence) + 1)
+    );
     return std::make_unique<BinaryExpr>(binaryOps.at(opToken.type), std::move(left), std::move(right));
 }
 
 std::unique_ptr<SelectStmt> Parser::selectStatement() {
     consume(TokenType::SELECT, "Expected SELECT");
     auto stmt = std::make_unique<SelectStmt>();
+
     if (match({TokenType::ASTERISK})) {
         if (check(TokenType::COMMA)) error("'*' cannot be used with other column names.");
     } else if (check(TokenType::IDENTIFIER)) {
@@ -181,8 +229,10 @@ std::unique_ptr<SelectStmt> Parser::selectStatement() {
     } else {
         consume(TokenType::IDENTIFIER, "Expected '*' or column names after SELECT.");
     }
+
     consume(TokenType::FROM, "Expected FROM after column list");
     stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
+
     if (match({TokenType::WHERE})) stmt->whereClause = expression();
     return stmt;
 }
@@ -192,10 +242,12 @@ std::unique_ptr<InsertStmt> Parser::insertStatement() {
     auto stmt = std::make_unique<InsertStmt>();
     consume(TokenType::INTO, "Expected INTO");
     stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
+
     if (match({TokenType::LEFT_PAREN})) {
         stmt->columns = parseColumnList();
         consume(TokenType::RIGHT_PAREN, "Expected ')'");
     }
+
     consume(TokenType::VALUES, "Expected VALUES");
     do {
         consume(TokenType::LEFT_PAREN, "Expected '('");
@@ -203,6 +255,7 @@ std::unique_ptr<InsertStmt> Parser::insertStatement() {
         else stmt->values.push_back(parseValueList());
         consume(TokenType::RIGHT_PAREN, "Expected ')'");
     } while (match({TokenType::COMMA}));
+
     return stmt;
 }
 
@@ -211,18 +264,30 @@ std::unique_ptr<UpdateStmt> Parser::updateStatement() {
     auto stmt = std::make_unique<UpdateStmt>();
     stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
     consume(TokenType::SET, "Expected SET");
+
     do {
         Token column = consume(TokenType::IDENTIFIER, "Expected column name");
         consume(TokenType::EQUALS, "Expected '='");
+
         if (match({TokenType::NUMBER_LITERAL, TokenType::STRING_LITERAL, TokenType::NULL_TOKEN})) {
             stmt->assignments.emplace_back(std::move(column.lexeme), previous().value);
-        } else if (check(TokenType::IDENTIFIER)) {
-            std::string id = peek().lexeme; std::transform(id.begin(), id.end(), id.begin(), ::toupper);
-            if (id == "TRUE") { advance(); stmt->assignments.emplace_back(std::move(column.lexeme), true); }
-            else if (id == "FALSE") { advance(); stmt->assignments.emplace_back(std::move(column.lexeme), false); }
-            else error("Unexpected identifier '" + peek().lexeme + "' in SET clause");
-        } else { error("Expected a literal value after '='"); }
+                } else if (check(TokenType::IDENTIFIER)) {
+            std::string id = peek().lexeme;
+            std::ranges::transform(id, id.begin(), ::toupper);
+            if (id == "TRUE") {
+                advance();
+                stmt->assignments.emplace_back(std::move(column.lexeme), true);
+            } else if (id == "FALSE") {
+                advance();
+                stmt->assignments.emplace_back(std::move(column.lexeme), false);
+            } else {
+                error(std::format("Unexpected identifier '{}' in SET clause", peek().lexeme));
+            }
+        } else {
+            error("Expected a literal value after '='");
+        }
     } while (match({TokenType::COMMA}));
+
     if (match({TokenType::WHERE})) stmt->whereClause = expression();
     return stmt;
 }
@@ -242,9 +307,14 @@ std::unique_ptr<CreateTableStmt> Parser::createTableStatement() {
     consume(TokenType::TABLE, "Expected TABLE");
     stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
     consume(TokenType::LEFT_PAREN, "Expected '('");
+
     if (check(TokenType::RIGHT_PAREN)) error("Column definitions cannot be empty");
-    else do { stmt->columns.push_back(parseColumnDef()); } while (match({TokenType::COMMA}));
+    else do {
+        stmt->columns.push_back(parseColumnDef());
+    } while (match({TokenType::COMMA}));
+
     consume(TokenType::RIGHT_PAREN, "Expected ')'");
+
     if (match({TokenType::WITH})) {
         consume(TokenType::OPTIONS, "Expected OPTIONS");
         consume(TokenType::LEFT_PAREN, "Expected '('");
@@ -263,11 +333,9 @@ std::unique_ptr<AlterTableStmt> Parser::alterTableStatement() {
 
     if (match({TokenType::RENAME})) {
         if (match({TokenType::TO})) {
-            // ALTER TABLE table_name RENAME TO new_table_name
             stmt->alterType = AlterTableStmt::AlterType::RENAME_TABLE;
             stmt->newTableName = consume(TokenType::IDENTIFIER, "Expected new table name").lexeme;
         } else if (match({TokenType::COLUMN})) {
-            // ALTER TABLE table_name RENAME COLUMN old_name TO new_name
             stmt->alterType = AlterTableStmt::AlterType::RENAME_COLUMN;
             stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
             consume(TokenType::TO, "Expected TO after column name");
@@ -276,7 +344,6 @@ std::unique_ptr<AlterTableStmt> Parser::alterTableStatement() {
             error("Expected TO or COLUMN after RENAME");
         }
     } else if (match({TokenType::ALTER})) {
-        // ALTER TABLE table_name ALTER COLUMN column_name TYPE new_type
         consume(TokenType::COLUMN, "Expected COLUMN after ALTER");
         stmt->alterType = AlterTableStmt::AlterType::ALTER_COLUMN_TYPE;
         stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
@@ -284,7 +351,6 @@ std::unique_ptr<AlterTableStmt> Parser::alterTableStatement() {
         stmt->newDataType = consume(TokenType::IDENTIFIER, "Expected new data type").lexeme;
         stmt->newParsedType = parseDataType(stmt->newDataType);
     } else if (match({TokenType::DROP})) {
-        // ALTER TABLE table_name DROP COLUMN column_name
         consume(TokenType::COLUMN, "Expected COLUMN after DROP");
         stmt->alterType = AlterTableStmt::AlterType::DROP_COLUMN;
         stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
@@ -301,15 +367,14 @@ std::unique_ptr<DropTableStmt> Parser::dropTableStatement() {
 
     auto stmt = std::make_unique<DropTableStmt>();
 
-    // Проверяем на IF EXISTS (опционально)
     if (check(TokenType::IDENTIFIER)) {
         std::string upper = peek().lexeme;
-        std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+        std::ranges::transform(upper, upper.begin(), ::toupper);
         if (upper == "IF") {
             advance();
             if (check(TokenType::IDENTIFIER)) {
                 upper = peek().lexeme;
-                std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+                std::ranges::transform(upper, upper.begin(), ::toupper);
                 if (upper == "EXISTS") {
                     advance();
                     stmt->ifExists = true;
@@ -323,23 +388,27 @@ std::unique_ptr<DropTableStmt> Parser::dropTableStatement() {
     }
 
     stmt->tableName = consume(TokenType::IDENTIFIER, "Expected table name").lexeme;
-
     return stmt;
 }
 
 TableOptions Parser::parseTableOptions() {
     TableOptions options;
     if (check(TokenType::RIGHT_PAREN)) return options;
+
     do {
         if (match({TokenType::TYPES})) {
-            consume(TokenType::EQUALS, "="); consume(TokenType::LEFT_BRACKET, "[");
-            options.allowedTypes = parseDataTypeList(); consume(TokenType::RIGHT_BRACKET, "]");
+            consume(TokenType::EQUALS, "=");
+            consume(TokenType::LEFT_BRACKET, "[");
+            options.allowedTypes = parseDataTypeList();
+            consume(TokenType::RIGHT_BRACKET, "]");
         } else if (match({TokenType::MAX_COLUMN_LENGTH})) {
             consume(TokenType::EQUALS, "=");
             options.maxColumnNameLength = std::get<int>(consume(TokenType::NUMBER_LITERAL, "number").value);
         } else if (match({TokenType::ADDITIONAL_CHARS})) {
-            consume(TokenType::EQUALS, "="); consume(TokenType::LEFT_BRACKET, "[");
-            options.additionalNameChars = parseCharacterList(); consume(TokenType::RIGHT_BRACKET, "]");
+            consume(TokenType::EQUALS, "=");
+            consume(TokenType::LEFT_BRACKET, "[");
+            options.additionalNameChars = parseCharacterList();
+            consume(TokenType::RIGHT_BRACKET, "]");
         } else if (match({TokenType::MAX_STRING_LENGTH})) {
             consume(TokenType::EQUALS, "=");
             options.maxStringLength = std::get<int>(consume(TokenType::NUMBER_LITERAL, "number").value);
@@ -348,9 +417,11 @@ TableOptions Parser::parseTableOptions() {
             options.gcFrequencyDays = std::get<int>(consume(TokenType::NUMBER_LITERAL, "number").value);
             match({TokenType::DAYS});
         } else {
-            error("Unknown option: " + peek().lexeme); advance();
+            error(std::format("Unknown option: {}", peek().lexeme));
+            advance();
         }
     } while (match({TokenType::COMMA}));
+
     return options;
 }
 
@@ -394,11 +465,19 @@ std::vector<Value> Parser::parseValueList() {
                 values.push_back(previous().value);
             } else if (check(TokenType::IDENTIFIER)) {
                 std::string upper = peek().lexeme;
-                std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
-                if (upper == "TRUE") { advance(); values.push_back(true); }
-                else if (upper == "FALSE") { advance(); values.push_back(false); }
-                else error("Unexpected identifier in value list");
-            } else error("Expected a literal value");
+                std::ranges::transform(upper, upper.begin(), ::toupper);
+                if (upper == "TRUE") {
+                    advance();
+                    values.push_back(true);
+                } else if (upper == "FALSE") {
+                    advance();
+                    values.push_back(false);
+                } else {
+                    error("Unexpected identifier in value list");
+                }
+            } else {
+                error("Expected a literal value");
+            }
         } while (match({TokenType::COMMA}));
     }
     return values;
@@ -409,18 +488,19 @@ std::unique_ptr<ColumnDef> Parser::parseColumnDef() {
     columnDef->name = consume(TokenType::IDENTIFIER, "column name").lexeme;
     columnDef->dataType = consume(TokenType::IDENTIFIER, "data type").lexeme;
     columnDef->parsedType = parseDataType(columnDef->dataType);
+
     while (true) {
         if (match({TokenType::NOT})) {
             consume(TokenType::NULL_TOKEN, "NULL after NOT");
             columnDef->notNull = true;
         } else if (check(TokenType::IDENTIFIER)) {
             std::string upper = peek().lexeme;
-            std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+            std::ranges::transform(upper, upper.begin(), ::toupper);
             if (upper == "PRIMARY") {
                 advance();
                 Token keyToken = consume(TokenType::IDENTIFIER, "KEY after PRIMARY");
                 std::string keyUpper = keyToken.lexeme;
-                std::transform(keyUpper.begin(), keyUpper.end(), keyUpper.begin(), ::toupper);
+                std::ranges::transform(keyUpper, keyUpper.begin(), ::toupper);
                 if (keyUpper != "KEY") error("Expected 'KEY' after 'PRIMARY'");
                 columnDef->primaryKey = true;
             } else break;
