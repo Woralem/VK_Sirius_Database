@@ -247,6 +247,31 @@ void HttpServer::setupCorsRoutes() {
     ([](const crow::request& req){
         return JsonHandler::handleCors(req, "GET, OPTIONS");
     });
+    CROW_ROUTE(app, "/get")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+    CROW_ROUTE(app, "/remove")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+    CROW_ROUTE(app, "/add")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+    CROW_ROUTE(app, "/update")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+    CROW_ROUTE(app, "/get/list")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
 }
 void HttpServer::run (int port) {
     CROW_LOG_INFO << "http Server on API starting...";
