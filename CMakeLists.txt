@@ -12,22 +12,31 @@ add_executable(VK_Database_API_Layer
         ${SOURCES}
         ${HEADERS}
 )
-if(WIN32) # Install dlls in the same directory as the executable on Windows
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Настройка выходных каталогов
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Зависимости для CPR
+if(UNIX AND NOT APPLE)
+    find_package(CURL REQUIRED)
+    find_package(Threads REQUIRED)
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+    set(CMAKE_INSTALL_RPATH "\$ORIGIN")
 endif()
+
+# Загрузка зависимостей
 FetchContent_Declare(
         asio
         GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
         GIT_TAG asio-1-28-0
 )
 FetchContent_MakeAvailable(asio)
-set(ASIO_INCLUDE_DIR
-        ${asio_SOURCE_DIR}/asio/include CACHE INTERNAL ""
-)
-set(ASIO_STANDALONE ON CACHE BOOL "" FORCE)
+set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include)
+set(asio_SOURCE_DIR ${asio_SOURCE_DIR} CACHE PATH "" FORCE)
 
-
+# Добавьте эту строку для Crow
+set(CROW_FORCE_USE_EXTERNAL_ASIO ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
         nlohmann_json
         GIT_REPOSITORY https://github.com/nlohmann/json.git
@@ -38,40 +47,45 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/CrowCpp/Crow.git
         GIT_TAG master
 )
-set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(CROW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-
 FetchContent_Declare(
         cpr
         GIT_REPOSITORY https://github.com/libcpr/cpr.git
         GIT_TAG 1.10.5
 )
-FetchContent_MakeAvailable(nlohmann_json crow cpr)
-target_link_libraries(VK_Database_API_Layer
-        PRIVATE
-        nlohmann_json::nlohmann_json
-        Crow::Crow
-        cpr::cpr
-        ws2_32 wsock32
-)
 
+# Настройка параметров зависимостей
+set(ASIO_STANDALONE ON CACHE BOOL "" FORCE)
+set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CROW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 
+FetchContent_MakeAvailable(asio nlohmann_json crow cpr)
 
-
+# Настройка include директорий
 target_include_directories(VK_Database_API_Layer
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${crow_SOURCE_DIR}/include
         ${nlohmann_json_SOURCE_DIR}/include
-        ${ASIO_INCLUDE_DIR}
+        ${asio_SOURCE_DIR}/asio/include
 )
 
+# Настройка линковки
+target_link_libraries(VK_Database_API_Layer
+        PRIVATE
+        nlohmann_json::nlohmann_json
+        Crow::Crow
+        cpr::cpr
+)
 
+# Платформо-специфичные настройки
 if(WIN32)
     target_link_libraries(VK_Database_API_Layer PRIVATE ws2_32 wsock32)
     target_compile_definitions(VK_Database_API_Layer PRIVATE _WIN32_WINNT=0x0601)
+else()
+    target_link_libraries(VK_Database_API_Layer PRIVATE Threads::Threads CURL::libcurl)
 endif()
+
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES
             ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
