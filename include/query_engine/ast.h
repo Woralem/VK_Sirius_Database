@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <compare>
 #include <format>
+#include <cstdint>
 
 namespace query_engine {
 
@@ -15,8 +16,7 @@ namespace query_engine {
 struct ASTNode;
 using ASTNodePtr = std::unique_ptr<ASTNode>;
 
-// Value types
-using Value = std::variant<std::monostate, int, double, std::string, bool>;
+using Value = std::variant<std::monostate, int64_t, double, std::string, bool>;
 
 // Data types that can be stored in table
 enum class DataType {

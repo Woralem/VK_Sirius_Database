@@ -2,6 +2,7 @@
 #include <string>
 #include <variant>
 #include <ostream>
+#include "ast.h"
 
 namespace query_engine {
 
@@ -42,7 +43,6 @@ namespace query_engine {
         END_OF_FILE, UNKNOWN
     };
 
-    using Value = std::variant<std::monostate, int, double, std::string, bool>;
 
     struct Token {
         TokenType type;

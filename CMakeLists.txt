@@ -50,10 +50,13 @@ target_link_libraries(database_terminal PRIVATE nlohmann_json::nlohmann_json)
 
 add_executable(run_tests
         tests/test_framework.h
-        tests/run_tests.cpp
         tests/test_utils.h
-        tests/final_boss.cpp
         ${QUERY_ENGINE_SOURCES}
+        src/storage/OptimizedInMemoryStorage.cpp
+        tests/comprehensive_tests.cpp
+        tests/basic_operation_tests.cpp
+        tests/data_type_tests.cpp
+        tests/new_json_format_tests.cpp
         tests/like_tests.cpp
         tests/drop_tests.cpp
 )

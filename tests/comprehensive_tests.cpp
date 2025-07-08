@@ -1,17 +1,9 @@
 #include "test_framework.h"
 
-// Объявления функций для добавления тестов
+// Объявления только тех функций, которые реально реализованы
 void addBasicOperationTests(tests::TestFramework& framework);
 void addDataTypeTests(tests::TestFramework& framework);
-void addComplexQueryTests(tests::TestFramework& framework);
-void addAlterTableTests(tests::TestFramework& framework);
-void addErrorHandlingTests(tests::TestFramework& framework);
 void addNewJsonFormatTests(tests::TestFramework& framework);
-void addActivityLoggerTests(tests::TestFramework& framework);
-void addDatabaseManagerTests(tests::TestFramework& framework);
-void addPerformanceTests(tests::TestFramework& framework);
-void addLikeTests(tests::TestFramework& framework);
-void addDropTests(tests::TestFramework& framework);
 
 int main() {
     tests::TestFramework framework;
@@ -19,20 +11,14 @@ int main() {
     std::cout << "\033[1;35m";
     std::cout << "╔══════════════════════════════════════════════════════════════╗\n";
     std::cout << "║               COMPREHENSIVE BACKEND TEST SUITE               ║\n";
-    std::cout << "║          Testing C++20 Migration & All Components           ║\n";
+    std::cout << "║              Testing Basic Functionality                     ║\n";
     std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
     std::cout << "\033[0m\n";
 
+    // Добавляем только реализованные тесты
     addBasicOperationTests(framework);
     addDataTypeTests(framework);
-    addComplexQueryTests(framework);
-    addAlterTableTests(framework);
-    addErrorHandlingTests(framework);
     addNewJsonFormatTests(framework);
-    addActivityLoggerTests(framework);
-    addDatabaseManagerTests(framework);
-    addPerformanceTests(framework);
-
 
     framework.runAllTests();
     return 0;

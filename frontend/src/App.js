@@ -102,6 +102,27 @@ function App() {
         }
     };
 
+    const formatCellContent = (content, type) => {
+        if (content === null) {
+            return <i className="null-value">NULL</i>;
+        }
+
+        switch (type.toUpperCase()) {
+            case 'INT':
+                return <span className="int-value">{content}</span>;
+            case 'DOUBLE':
+                return <span className="double-value">{typeof content === 'number' ? content.toFixed(2) : content}</span>;
+            case 'BOOLEAN':
+                return <span className={`boolean-value ${content ? 'true' : 'false'}`}>
+                    {content ? '✓' : '✗'}
+                </span>;
+            case 'VARCHAR':
+                return <span className="string-value">"{content}"</span>;
+            default:
+                return String(content);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -263,11 +284,53 @@ function App() {
     const renderResult = () => {
         if (!result) return null;
 
-        if (result.message && !result.data) {
+        if (result.message && !result.header && !result.cells) {
             return <p><strong>Message:</strong> {result.message}</p>;
         }
         if (typeof result.rows_affected !== 'undefined') {
             return <p><strong>Rows Affected:</strong> {result.rows_affected}</p>
+        }
+
+        if (result.header && result.cells) {
+            if (result.header.length === 0 || result.cells.length === 0) {
+                return <p>(Query returned 0 rows)</p>;
+            }
+
+            return (
+                <div className="table-container">
+                    <table>
+                        <thead>
+                        <tr>
+                            {result.header.map(headerCell => (
+                                <th key={headerCell.id} className={`column-type-${headerCell.type.toLowerCase()}`}>
+                                    <div className="header-content">
+                                        <span className="column-name">{headerCell.content}</span>
+                                        <span className="column-type">({headerCell.type})</span>
+                                    </div>
+                                </th>
+                            ))}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {result.cells.map((row, rowIndex) => (
+                            <tr key={`row_${rowIndex}`}>
+                                {row.map((cell, cellIndex) => {
+                                    const columnType = result.header[cellIndex]?.type || 'UNKNOWN';
+                                    return (
+                                        <td key={cell.id} className={`cell-type-${columnType.toLowerCase()}`}>
+                                            {formatCellContent(cell.content, columnType)}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                    <div className="table-info">
+                        <p>Rows: {result.cells.length}, Columns: {result.header.length}</p>
+                    </div>
+                </div>
+            );
         }
 
         if (result.data && Array.isArray(result.data)) {
@@ -302,10 +365,12 @@ function App() {
 
     return (
         <div className="App">
+            {/* Activity Logs Button */}
             <button className="logs-button" onClick={() => { setShowLogs(true); loadLogs(); }}>
                 📋 Activity Logs
             </button>
 
+            {/* Logs Modal */}
             {showLogs && (
                 <div className="logs-modal" onClick={() => setShowLogs(false)}>
                     <div className="logs-content" onClick={(e) => e.stopPropagation()}>
@@ -334,6 +399,13 @@ function App() {
                                         {log.query && <div className="log-query">{log.query}</div>}
                                         {log.details && <div>Details: {log.details}</div>}
                                         {log.error && <div style={{color: '#f44336'}}>Error: {log.error}</div>}
+                                        {log.result && log.result.cells && (
+                                            <div className="log-result">
+                                                Result: {log.result.truncated ?
+                                                `${log.result.cells.length} rows (truncated from ${log.result.total_rows})` :
+                                                `${log.result.cells.length} rows`}
+                                            </div>
+                                        )}
                                         {log.result && log.result.data && (
                                             <div className="log-result">
                                                 Result: {log.result.truncated ?

@@ -1,6 +1,7 @@
 #include "query_engine/lexer.h"
 #include <cctype>
 #include <algorithm>
+#include <limits>
 
 namespace query_engine {
 
@@ -250,10 +251,13 @@ Token Lexer::number() {
         if (isFloat) {
             token.value = std::stod(std::string(text));
         } else {
-            token.value = std::stoi(std::string(text));
+            int64_t num = std::stoll(std::string(text));
+            token.value = num;
         }
     } catch(const std::out_of_range&) {
         return errorToken("Number literal is out of range");
+    } catch(const std::invalid_argument&) {
+        return errorToken("Invalid number format");
     }
 
     return token;

@@ -1,6 +1,8 @@
 #include "storage/optimized_in_memory_storage.h"
 #include "utils.h"
 #include <format>
+#include <cstdint>
+#include <limits>
 
 bool OptimizedInMemoryStorage::validateColumnName(std::string_view name, const TableOptions& options) const {
     if (name.empty() || name.length() > options.maxColumnNameLength) {
@@ -29,11 +31,21 @@ bool OptimizedInMemoryStorage::validateValueForColumn(const Value& value, const 
     if (std::holds_alternative<std::monostate>(value)) return true;
     bool type_ok = false;
     switch (colDef.parsedType) {
-        case DataType::INT:       type_ok = std::holds_alternative<int>(value); break;
-        case DataType::DOUBLE:    type_ok = std::holds_alternative<double>(value) || std::holds_alternative<int>(value); break;
-        case DataType::VARCHAR:   type_ok = std::holds_alternative<std::string>(value); break;
-        case DataType::BOOLEAN:   type_ok = std::holds_alternative<bool>(value); break;
-        default: type_ok = true; break;
+        case DataType::INT:
+            type_ok = std::holds_alternative<int64_t>(value);
+            break;
+        case DataType::DOUBLE:
+            type_ok = std::holds_alternative<double>(value) || std::holds_alternative<int64_t>(value);
+            break;
+        case DataType::VARCHAR:
+            type_ok = std::holds_alternative<std::string>(value);
+            break;
+        case DataType::BOOLEAN:
+            type_ok = std::holds_alternative<bool>(value);
+            break;
+        default:
+            type_ok = true;
+            break;
     }
     if (!type_ok) {
         std::cout << "\033[91m[VALIDATION ERROR]\033[0m Type mismatch for column '" << colDef.name << "'.\n";
@@ -79,6 +91,8 @@ void OptimizedInMemoryStorage::setJsonValue(json& row, std::string_view key, con
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::same_as<T, std::monostate>) {
             row[std::string(key)] = nullptr;
+        } else if constexpr (std::same_as<T, int64_t>) {
+            row[std::string(key)] = arg;
         } else {
             row[std::string(key)] = arg;
         }
@@ -97,20 +111,20 @@ json OptimizedInMemoryStorage::convertValue(const json& value, DataType fromType
                     case DataType::INT:
                         return value;
                     case DataType::DOUBLE:
-                        return static_cast<int>(std::round(value.get<double>()));
+                        return static_cast<int64_t>(std::round(value.get<double>()));
                     case DataType::VARCHAR: {
                         std::string str_val = value.get<std::string>();
                         if (isValidInteger(str_val)) {
-                            return std::stoi(str_val);
+                            return static_cast<int64_t>(std::stoll(str_val));
                         } else if (isValidDouble(str_val)) {
-                            return static_cast<int>(std::round(std::stod(str_val)));
+                            return static_cast<int64_t>(std::round(std::stod(str_val)));
                         } else {
                             std::cout << std::format("\033[93m[WARNING]\033[0m Cannot convert '{}' to INT, setting to NULL\n", str_val);
                             return nullptr;
                         }
                     }
                     case DataType::BOOLEAN:
-                        return value.get<bool>() ? 1 : 0;
+                        return value.get<bool>() ? int64_t(1) : int64_t(0);
                     default:
                         return nullptr;
                 }
@@ -119,7 +133,11 @@ json OptimizedInMemoryStorage::convertValue(const json& value, DataType fromType
             case DataType::DOUBLE: {
                 switch (fromType) {
                     case DataType::INT:
-                        return static_cast<double>(value.get<int>());
+                        if (value.is_number_integer()) {
+                            return static_cast<double>(value.get<int64_t>());
+                        } else {
+                            return static_cast<double>(value.get<int>());
+                        }
                     case DataType::DOUBLE:
                         return value;
                     case DataType::VARCHAR: {
@@ -228,45 +246,59 @@ bool OptimizedInMemoryStorage::insertRow(const std::string& tableName, const std
     if (table_it == tables.end()) return false;
     auto& table = table_it->second;
 
-    std::vector<std::pair<std::string, Value>> valueMap;
+    std::unordered_map<std::string, Value> fullValueMap;
+
+    for (const auto& colDef : table.schema) {
+        fullValueMap[colDef.name] = std::monostate{};
+    }
+
     if (columns.empty()) {
         if (values.size() != table.schema.size()) return false;
         for (size_t i = 0; i < values.size(); ++i) {
-            valueMap.emplace_back(table.schema[i].name, values[i]);
+            fullValueMap[table.schema[i].name] = values[i];
         }
     } else {
         if (columns.size() != values.size()) return false;
         for (size_t i = 0; i < columns.size(); ++i) {
-            valueMap.emplace_back(columns[i], values[i]);
+            fullValueMap[columns[i]] = values[i];
         }
     }
 
-    for (const auto& [colName, value] : valueMap) {
-        const ColumnDef* colDef = getColumnDef(table, colName);
-        if (!colDef ||
-            (std::holds_alternative<std::string>(value) &&
-             std::get<std::string>(value).length() > table.options.maxStringLength) ||
-            !validateValueForColumn(value, *colDef)) {
+    for (const auto& colDef : table.schema) {
+        const auto& value = fullValueMap[colDef.name];
+
+        if (colDef.notNull && std::holds_alternative<std::monostate>(value)) {
+            std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name << "' cannot be null.\n";
             return false;
         }
-        if (colDef->primaryKey) {
+
+        if (!std::holds_alternative<std::monostate>(value) && !validateValueForColumn(value, colDef)) {
+            return false;
+        }
+
+        if (std::holds_alternative<std::string>(value) &&
+            std::get<std::string>(value).length() > table.options.maxStringLength) {
+            return false;
+        }
+
+        if (colDef.primaryKey && !std::holds_alternative<std::monostate>(value)) {
             json tempJson;
-            setJsonValue(tempJson, colName, value);
-            if(table.indexes.contains(colName) &&
-               table.indexes.at(colName).contains(valueToIndexKey(tempJson[colName]))) {
+            setJsonValue(tempJson, colDef.name, value);
+            if (table.indexes.contains(colDef.name) &&
+                table.indexes.at(colDef.name).contains(valueToIndexKey(tempJson[colDef.name]))) {
                 return false;
             }
         }
     }
 
     json row;
-    for (const auto& [colName, value] : valueMap) {
+    for (const auto& [colName, value] : fullValueMap) {
         setJsonValue(row, colName, value);
     }
 
     size_t rowIndex = table.data.size();
     for (auto& [colName, index] : table.indexes) {
-        if (row.contains(colName)) {
+        if (row.contains(colName) && !row[colName].is_null()) {
             index[valueToIndexKey(row[colName])].push_back(rowIndex);
         }
     }
@@ -388,7 +420,6 @@ json OptimizedInMemoryStorage::selectRows(const std::string& tableName,
                                           std::function<bool(const json&)> predicate) {
     json result;
     result["status"] = "success";
-    result["data"] = json::array();
 
     auto it = tables.find(tableName);
     if (it == tables.end()) {
@@ -397,24 +428,108 @@ json OptimizedInMemoryStorage::selectRows(const std::string& tableName,
         return result;
     }
 
-    const auto& tableData = it->second.data;
+    const auto& table = it->second;
+    const auto& tableData = table.data;
+
+    std::vector<json> matchingRows;
     for (const auto& row : tableData) {
         if (!row.is_null() && predicate(row)) {
-            if (columns.empty() || (columns.size() == 1 && columns[0] == "*")) {
-                result["data"].push_back(row);
-            } else {
-                json filteredRow;
-                for (const auto& col_name : columns) {
-                    if (row.contains(col_name)) {
-                        filteredRow[col_name] = row[col_name];
-                    } else {
-                        filteredRow[col_name] = nullptr;
-                    }
-                }
-                result["data"].push_back(std::move(filteredRow));
-            }
+            matchingRows.push_back(row);
         }
     }
+
+    if (matchingRows.empty()) {
+        std::vector<std::string> headerNames;
+        if (columns.empty() || (columns.size() == 1 && columns[0] == "*")) {
+            for (const auto& col : table.schema) {
+                headerNames.push_back(col.name);
+            }
+        } else {
+            headerNames = columns;
+        }
+
+        json header = json::array();
+        for (size_t i = 0; i < headerNames.size(); ++i) {
+            json headerCell;
+            headerCell["content"] = headerNames[i];
+            headerCell["id"] = std::format("col_{}", i);
+
+            const ColumnDef* colDef = getColumnDef(table, headerNames[i]);
+            if (colDef) {
+                headerCell["type"] = std::string(dataTypeToString(colDef->parsedType));
+            } else {
+                headerCell["type"] = "UNKNOWN";
+            }
+
+            header.push_back(headerCell);
+        }
+        result["header"] = header;
+        result["cells"] = json::array();
+        return result;
+    }
+
+   std::vector<std::string> headerNames;
+    if (columns.empty() || (columns.size() == 1 && columns[0] == "*")) {
+        std::set<std::string> availableColumns;
+        for (auto& [key, value] : matchingRows[0].items()) {
+            availableColumns.insert(key);
+        }
+
+        for (const auto& col : table.schema) {
+            if (availableColumns.count(col.name)) {
+                headerNames.push_back(col.name);
+            }
+        }
+
+        for (const auto& colName : availableColumns) {
+            if (std::find(headerNames.begin(), headerNames.end(), colName) == headerNames.end()) {
+                headerNames.push_back(colName);
+            }
+        }
+    } else {
+        headerNames = columns;
+    }
+
+    json header = json::array();
+    for (size_t i = 0; i < headerNames.size(); ++i) {
+        json headerCell;
+        headerCell["content"] = headerNames[i];
+        headerCell["id"] = std::format("col_{}", i);
+
+        const ColumnDef* colDef = getColumnDef(table, headerNames[i]);
+        if (colDef) {
+            headerCell["type"] = std::string(dataTypeToString(colDef->parsedType));
+        } else {
+            headerCell["type"] = "UNKNOWN";
+        }
+
+        header.push_back(headerCell);
+    }
+    result["header"] = header;
+
+    json cells = json::array();
+    for (size_t rowIndex = 0; rowIndex < matchingRows.size(); ++rowIndex) {
+        const auto& row = matchingRows[rowIndex];
+        json cellRow = json::array();
+
+        for (size_t colIndex = 0; colIndex < headerNames.size(); ++colIndex) {
+            const std::string& columnName = headerNames[colIndex];
+            json cell;
+
+            if (row.contains(columnName)) {
+                cell["content"] = row[columnName];
+            } else {
+                cell["content"] = nullptr;
+            }
+
+            cell["id"] = std::format("cell_{}_{}", rowIndex, colIndex);
+            cellRow.push_back(cell);
+        }
+
+        cells.push_back(cellRow);
+    }
+    result["cells"] = cells;
+
     return result;
 }
 

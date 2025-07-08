@@ -362,7 +362,11 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
             if (row.contains(id->name)) {
                 const auto& val = row[id->name];
                 if (val.is_number_integer()) {
-                    return val.get<int>();
+                    if (val.is_number_unsigned()) {
+                        return static_cast<int64_t>(val.get<uint64_t>());
+                    } else {
+                        return val.get<int64_t>();
+                    }
                 }
                 if (val.is_number_float()) {
                     return val.get<double>();
@@ -385,7 +389,7 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
     }
 }
 
-bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
+    bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
     if (op == BinaryExpr::Operator::LIKE) {
         if (!std::holds_alternative<std::string>(left) || !std::holds_alternative<std::string>(right)) {
             return false;
@@ -397,12 +401,14 @@ bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator o
         return matchLikePattern(text, pattern);
     }
 
-    bool leftIsNumeric = std::holds_alternative<int>(left) || std::holds_alternative<double>(left);
-    bool rightIsNumeric = std::holds_alternative<int>(right) || std::holds_alternative<double>(right);
+    bool leftIsNumeric = std::holds_alternative<int64_t>(left) || std::holds_alternative<double>(left);
+    bool rightIsNumeric = std::holds_alternative<int64_t>(right) || std::holds_alternative<double>(right);
 
     if (leftIsNumeric && rightIsNumeric) {
-        double leftDouble = std::holds_alternative<int>(left) ? static_cast<double>(std::get<int>(left)) : std::get<double>(left);
-        double rightDouble = std::holds_alternative<int>(right) ? static_cast<double>(std::get<int>(right)) : std::get<double>(right);
+        double leftDouble = std::holds_alternative<int64_t>(left) ?
+            static_cast<double>(std::get<int64_t>(left)) : std::get<double>(left);
+        double rightDouble = std::holds_alternative<int64_t>(right) ?
+            static_cast<double>(std::get<int64_t>(right)) : std::get<double>(right);
 
         switch (op) {
             case BinaryExpr::Operator::EQ: return leftDouble == rightDouble;

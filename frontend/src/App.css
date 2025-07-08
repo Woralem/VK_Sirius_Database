@@ -406,3 +406,97 @@ th {
     padding: 10px;
   }
 }
+
+.header-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.column-name {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.column-type {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: normal;
+  margin-top: 2px;
+}
+
+.column-type-int {
+  background-color: #e3f2fd;
+}
+
+.column-type-double {
+  background-color: #f3e5f5;
+}
+
+.column-type-varchar {
+  background-color: #e8f5e8;
+}
+
+.column-type-boolean {
+  background-color: #fff3e0;
+}
+
+.cell-type-int {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+.cell-type-double {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+.cell-type-boolean {
+  text-align: center;
+}
+
+.cell-type-varchar {
+  text-align: left;
+}
+
+.int-value {
+  color: #1976d2;
+  font-weight: bold;
+}
+
+.double-value {
+  color: #7b1fa2;
+  font-weight: bold;
+}
+
+.boolean-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.boolean-value.true {
+  color: #388e3c;
+}
+
+.boolean-value.false {
+  color: #d32f2f;
+}
+
+.string-value {
+  color: #388e3c;
+}
+
+.null-value {
+  color: #999;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .header-content {
+    align-items: center;
+  }
+
+  .column-type {
+    font-size: 0.7rem;
+  }
+}

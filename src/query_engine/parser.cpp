@@ -271,7 +271,7 @@ std::unique_ptr<UpdateStmt> Parser::updateStatement() {
 
         if (match({TokenType::NUMBER_LITERAL, TokenType::STRING_LITERAL, TokenType::NULL_TOKEN})) {
             stmt->assignments.emplace_back(std::move(column.lexeme), previous().value);
-                } else if (check(TokenType::IDENTIFIER)) {
+        } else if (check(TokenType::IDENTIFIER)) {
             std::string id = peek().lexeme;
             std::ranges::transform(id, id.begin(), ::toupper);
             if (id == "TRUE") {
@@ -291,7 +291,6 @@ std::unique_ptr<UpdateStmt> Parser::updateStatement() {
     if (match({TokenType::WHERE})) stmt->whereClause = expression();
     return stmt;
 }
-
 std::unique_ptr<DeleteStmt> Parser::deleteStatement() {
     consume(TokenType::DELETE_KEYWORD, "Expected DELETE");
     auto stmt = std::make_unique<DeleteStmt>();
@@ -391,7 +390,7 @@ std::unique_ptr<DropTableStmt> Parser::dropTableStatement() {
     return stmt;
 }
 
-TableOptions Parser::parseTableOptions() {
+    TableOptions Parser::parseTableOptions() {
     TableOptions options;
     if (check(TokenType::RIGHT_PAREN)) return options;
 
@@ -403,7 +402,8 @@ TableOptions Parser::parseTableOptions() {
             consume(TokenType::RIGHT_BRACKET, "]");
         } else if (match({TokenType::MAX_COLUMN_LENGTH})) {
             consume(TokenType::EQUALS, "=");
-            options.maxColumnNameLength = std::get<int>(consume(TokenType::NUMBER_LITERAL, "number").value);
+            auto token = consume(TokenType::NUMBER_LITERAL, "number");
+            options.maxColumnNameLength = static_cast<size_t>(std::get<int64_t>(token.value));
         } else if (match({TokenType::ADDITIONAL_CHARS})) {
             consume(TokenType::EQUALS, "=");
             consume(TokenType::LEFT_BRACKET, "[");
@@ -411,10 +411,12 @@ TableOptions Parser::parseTableOptions() {
             consume(TokenType::RIGHT_BRACKET, "]");
         } else if (match({TokenType::MAX_STRING_LENGTH})) {
             consume(TokenType::EQUALS, "=");
-            options.maxStringLength = std::get<int>(consume(TokenType::NUMBER_LITERAL, "number").value);
+            auto token = consume(TokenType::NUMBER_LITERAL, "number");
+            options.maxStringLength = static_cast<size_t>(std::get<int64_t>(token.value));
         } else if (match({TokenType::GC_FREQUENCY})) {
             consume(TokenType::EQUALS, "=");
-            options.gcFrequencyDays = std::get<int>(consume(TokenType::NUMBER_LITERAL, "number").value);
+            auto token = consume(TokenType::NUMBER_LITERAL, "number");
+            options.gcFrequencyDays = static_cast<int>(std::get<int64_t>(token.value));
             match({TokenType::DAYS});
         } else {
             error(std::format("Unknown option: {}", peek().lexeme));
@@ -424,7 +426,6 @@ TableOptions Parser::parseTableOptions() {
 
     return options;
 }
-
 std::set<DataType> Parser::parseDataTypeList() {
     std::set<DataType> types;
     if (!check(TokenType::RIGHT_BRACKET)) {
@@ -474,9 +475,12 @@ std::vector<Value> Parser::parseValueList() {
                     values.push_back(false);
                 } else {
                     error("Unexpected identifier in value list");
+                    advance();
+                    throw std::runtime_error("Unexpected identifier in value list");
                 }
             } else {
                 error("Expected a literal value");
+                throw std::runtime_error("Expected a literal value");
             }
         } while (match({TokenType::COMMA}));
     }
