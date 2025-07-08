@@ -1,10 +1,15 @@
 #include "api/http_server.h"
 #include "api/database_manager.h"
 #include "api/json_handler.h"
+#include "utils/activity_logger.h"
 #include <iostream>
 #include <format>
 
 HttpServer::HttpServer() : dbManager(std::make_shared<DatabaseManager>()) {
+    // Enable file logging
+    auto& logger = ActivityLogger::getInstance();
+    logger.setPersistToFile(true, "database_activity.log");
+
     setupRoutes();
     setupCorsRoutes();
 }
@@ -44,6 +49,49 @@ void HttpServer::setupRoutes() {
     ([this](const crow::request& req){
         return JsonHandler::handleQuery(req, dbManager);
     });
+
+    // Log routes
+    CROW_ROUTE(app, "/api/logs")
+    .methods(crow::HTTPMethod::Get)
+    ([this](const crow::request& req){
+        return JsonHandler::handleGetLogs(req, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/logs/download")
+    .methods(crow::HTTPMethod::Get)
+    ([this](const crow::request& req){
+        return JsonHandler::handleDownloadLogs(req, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/logs/clear")
+    .methods(crow::HTTPMethod::Post)
+    ([this](const crow::request& req){
+        return JsonHandler::handleClearLogs(req, dbManager);
+    });
+
+    // Database switch logging endpoint
+    CROW_ROUTE(app, "/api/db/switch")
+    .methods(crow::HTTPMethod::Post)
+    ([this](const crow::request& req){
+        try {
+            auto body = nlohmann::json::parse(req.body);
+            std::string fromDb = body.value("from", "");
+            std::string toDb = body.value("to", "");
+
+            auto& logger = ActivityLogger::getInstance();
+            logger.logDatabaseSwitch(fromDb, toDb);
+
+            return JsonHandler::createJsonResponse(200, nlohmann::json{
+                {"status", "success"},
+                {"message", "Database switch logged"}
+            });
+        } catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, nlohmann::json{
+                {"status", "error"},
+                {"message", e.what()}
+            });
+        }
+    });
 }
 
 void HttpServer::setupCorsRoutes() {
@@ -76,10 +124,39 @@ void HttpServer::setupCorsRoutes() {
     ([](const crow::request& req){
         return JsonHandler::handleCors(req, "POST, OPTIONS");
     });
+
+    CROW_ROUTE(app, "/api/logs")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/logs/download")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/logs/clear")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/db/switch")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
 }
 
 void HttpServer::run(int port) {
     CROW_LOG_INFO << "Database Server starting...";
     std::cout << std::format("Database Server is running on http://localhost:{}\n", port);
+
+    auto& logger = ActivityLogger::getInstance();
+    logger.logDatabaseAction(ActivityLogger::ActionType::LOG_VIEWED, "system",
+                           std::format("Server started on port {}", port));
+
     app.port(port).multithreaded().run();
 }

@@ -1,10 +1,6 @@
-
-
 #include "storage/optimized_in_memory_storage.h"
-#include "config.h"
 #include "utils.h"
 #include <format>
-#include <ranges>
 
 bool OptimizedInMemoryStorage::validateColumnName(std::string_view name, const TableOptions& options) const {
     if (name.empty() || name.length() > options.maxColumnNameLength) {
@@ -25,7 +21,7 @@ const ColumnDef* OptimizedInMemoryStorage::getColumnDef(const Table& table, std:
     return (it != table.schema.end()) ? &(*it) : nullptr;
 }
 
-bool validateValueForColumn(const Value& value, const ColumnDef& colDef) {
+bool OptimizedInMemoryStorage::validateValueForColumn(const Value& value, const ColumnDef& colDef) const {
     if (colDef.notNull && std::holds_alternative<std::monostate>(value)) {
         std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name << "' cannot be null.\n";
         return false;
@@ -46,6 +42,7 @@ bool validateValueForColumn(const Value& value, const ColumnDef& colDef) {
     return true;
 }
 
+// Остальной код остается без изменений...
 bool OptimizedInMemoryStorage::isValidInteger(std::string_view str) const {
     if (str.empty()) return false;
     static const std::regex intRegex(R"(^-?\d+$)");
@@ -214,7 +211,7 @@ bool OptimizedInMemoryStorage::createTable(const std::string& tableName, const s
     table.lastGC = std::chrono::system_clock::now();
 
     for (auto* col : columns) {
-                if (col->parsedType == DataType::UNKNOWN_TYPE ||
+        if (col->parsedType == DataType::UNKNOWN_TYPE ||
             !validateColumnName(col->name, options) ||
             (!options.allowedTypes.empty() && !options.allowedTypes.contains(col->parsedType))) {
             tables.erase(tableName);
@@ -359,12 +356,12 @@ int OptimizedInMemoryStorage::deleteRows(const std::string& tableName, std::func
     // Это проще и безопаснее, чем удаление на месте со сдвигом.
     json newData = json::array();
     newData.get_ref<json::array_t&>().reserve(table.data.size() - deletedCount);
-    
+
     // Перестраиваем индексы
     for(auto& pair : table.indexes) {
         pair.second.clear();
     }
-    
+
     size_t newIndex = 0;
     for(size_t i = 0; i < table.data.size(); ++i) {
         // Проверяем, нужно ли удалять этот индекс
@@ -380,7 +377,7 @@ int OptimizedInMemoryStorage::deleteRows(const std::string& tableName, std::func
             newIndex++;
         }
     }
-    
+
     table.data = std::move(newData);
 
     return deletedCount;
@@ -591,7 +588,7 @@ bool OptimizedInMemoryStorage::dropColumn(const std::string& tableName, const st
         table.indexes.erase(columnName);
     }
 
-        std::cout << std::format("\033[92m[SUCCESS]\033[0m Column '{}' dropped successfully!\n", columnName);
+    std::cout << std::format("\033[92m[SUCCESS]\033[0m Column '{}' dropped successfully!\n", columnName);
     return true;
 }
 

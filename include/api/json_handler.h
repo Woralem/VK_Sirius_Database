@@ -15,7 +15,12 @@ public:
     [[nodiscard]] static crow::response handleQuery(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
     [[nodiscard]] static crow::response handleCors(const crow::request& req, const std::string& methods);
 
-private:
+    [[nodiscard]] static crow::response handleGetLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
+    [[nodiscard]] static crow::response handleDownloadLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
+    [[nodiscard]] static crow::response handleClearLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
+
     [[nodiscard]] static crow::response createJsonResponse(int code, const nlohmann::json& body);
+
+private:
     [[nodiscard]] static bool validateDatabaseName(const std::string& name);
 };

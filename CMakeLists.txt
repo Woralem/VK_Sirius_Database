@@ -92,6 +92,7 @@ if(BUILD_WEB_SERVER)
             src/api/http_server.cpp
             ${QUERY_ENGINE_SOURCES}
             src/storage/OptimizedInMemoryStorage.cpp
+            src/utils/activity_logger.cpp
     )
 
     target_include_directories(database_server

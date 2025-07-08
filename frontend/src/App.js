@@ -11,6 +11,9 @@ function App() {
     const [showDbManager, setShowDbManager] = useState(false);
     const [renamingDb, setRenamingDb] = useState(null);
     const [renameInput, setRenameInput] = useState('');
+    const [showLogs, setShowLogs] = useState(false);
+    const [logs, setLogs] = useState([]);
+    const [logsLoading, setLogsLoading] = useState(false);
 
     // Загрузка списка БД при монтировании компонента
     useEffect(() => {
@@ -29,10 +32,94 @@ function App() {
         }
     };
 
+    const loadLogs = async (limit = 100, offset = 0) => {
+        setLogsLoading(true);
+        try {
+            const response = await fetch(`/api/logs?limit=${limit}&offset=${offset}`);
+            const data = await response.json();
+            setLogs(data.logs || []);
+        } catch (error) {
+            console.error('Failed to load logs:', error);
+            alert('Failed to load activity logs');
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
+    const downloadLogs = async (format = 'text') => {
+        try {
+            const response = await fetch(`/api/logs/download?format=${format}`);
+            const blob = await response.blob();
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `activity_log.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Failed to download logs:', error);
+            alert('Failed to download logs');
+        }
+    };
+
+    const clearLogs = async () => {
+        if (!window.confirm('Are you sure you want to clear all activity logs?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/logs/clear', { method: 'POST' });
+            const data = await response.json();
+            if (data.status === 'success') {
+                setLogs([]);
+                alert('Logs cleared successfully');
+            }
+        } catch (error) {
+            console.error('Failed to clear logs:', error);
+            alert('Failed to clear logs');
+        }
+    };
+
+    const handleDbChange = async (newDb) => {
+        const oldDb = selectedDb;
+        setSelectedDb(newDb);
+
+        // Log database switch
+        try {
+            await fetch('/api/db/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: oldDb,
+                    to: newDb
+                })
+            });
+        } catch (error) {
+            console.error('Failed to log database switch:', error);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setResult(null);
+
+        // Check for special log commands
+        const upperQuery = query.toUpperCase().trim();
+        if (upperQuery === 'SHOW LOGS' || upperQuery === 'SELECT * FROM LOGS') {
+            setShowLogs(true);
+            await loadLogs();
+            return;
+        } else if (upperQuery === 'DOWNLOAD LOGS') {
+            await downloadLogs('text');
+            return;
+        } else if (upperQuery === 'CLEAR LOGS') {
+            await clearLogs();
+            return;
+        }
 
         const API_URL = '/api/query';
 
@@ -211,20 +298,66 @@ function App() {
         }
 
         return <pre>{JSON.stringify(result, null, 2)}</pre>;
-    }
+    };
 
     return (
         <div className="App">
+            <button className="logs-button" onClick={() => { setShowLogs(true); loadLogs(); }}>
+                📋 Activity Logs
+            </button>
+
+            {showLogs && (
+                <div className="logs-modal" onClick={() => setShowLogs(false)}>
+                    <div className="logs-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="logs-header">
+                            <h2>Activity Logs</h2>
+                            <div className="logs-actions">
+                                <button onClick={() => downloadLogs('text')}>Download TXT</button>
+                                <button onClick={() => downloadLogs('csv')}>Download CSV</button>
+                                <button onClick={() => downloadLogs('json')}>Download JSON</button>
+                                <button onClick={clearLogs} className="delete-btn">Clear Logs</button>
+                                <button onClick={() => setShowLogs(false)}>Close</button>
+                            </div>
+                        </div>
+
+                        {logsLoading ? (
+                            <p>Loading logs...</p>
+                        ) : logs.length === 0 ? (
+                            <p>No activity logs found.</p>
+                        ) : (
+                            <div className="logs-list">
+                                {logs.map((log, index) => (
+                                    <div key={index} className={`log-entry ${log.success ? 'success' : 'error'}`}>
+                                        <div className="log-timestamp">{log.timestamp}</div>
+                                        <div className="log-action">{log.action}</div>
+                                        <div>Database: {log.database}</div>
+                                        {log.query && <div className="log-query">{log.query}</div>}
+                                        {log.details && <div>Details: {log.details}</div>}
+                                        {log.error && <div style={{color: '#f44336'}}>Error: {log.error}</div>}
+                                        {log.result && log.result.data && (
+                                            <div className="log-result">
+                                                Result: {log.result.truncated ?
+                                                `${log.result.data.length} rows (truncated from ${log.result.total_rows})` :
+                                                `${log.result.data.length} rows`}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <header className="App-header">
                 <h1>Database Query Interface</h1>
 
-                {/* Database Selection */}
                 <div className="db-controls">
                     <div className="db-selector">
                         <label>Current Database: </label>
                         <select
                             value={selectedDb}
-                            onChange={(e) => setSelectedDb(e.target.value)}
+                            onChange={(e) => handleDbChange(e.target.value)}
                             className="db-select"
                         >
                             {databases.map(db => (
@@ -326,7 +459,10 @@ function App() {
                         placeholder="Enter SQL-like query...
 e.g., CREATE TABLE users (id INT, name VARCHAR);
 e.g., INSERT INTO users VALUES (1, 'Alice');
-e.g., SELECT * FROM users;"
+e.g., SELECT * FROM users;
+e.g., SHOW LOGS;
+e.g., DOWNLOAD LOGS;
+e.g., CLEAR LOGS;"
                         rows={5}
                     />
                     <br />
