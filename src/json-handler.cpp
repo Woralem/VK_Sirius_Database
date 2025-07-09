@@ -20,7 +20,6 @@ namespace JsonHandler {
         res.add_header("Access-Control-Allow-Headers", "Content-Type");
         res.add_header("Access-Control-Allow-Methods", methods);
         res.code = 204;
-        res.end();
         return res;
     }
 

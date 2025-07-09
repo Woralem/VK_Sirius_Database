@@ -28,6 +28,7 @@ namespace DBhandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
+        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -50,6 +51,7 @@ namespace DBhandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
+        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -65,6 +67,7 @@ namespace DBhandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
+        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -76,6 +79,7 @@ namespace DBhandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
+        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -114,13 +118,13 @@ namespace DBhandler {
                 {"message", "Request body must contain 'db_name' field"}
             });
         }
-        json req;
-        req["from"] = cur_db;
+        json db_req;
+        db_req["from"] = cur_db;
         cur_db = json_request["db_name"].get<std::string>();
-        req["to"] = cur_db;
+        db_req["to"] = cur_db;
         cpr::Response db_res = cpr::Post(
             cpr::Url{"http://localhost:8080/api/db/switch}"},
-            cpr::Body{req.dump()});
+            cpr::Body{db_req.dump()});
         cur_db = json_request["db_name"].get<std::string>();
         return JsonHandler::createJsonResponse(200, json{
             {"status", "success"},

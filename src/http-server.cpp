@@ -220,12 +220,12 @@ void HttpServer::setupCorsRoutes() {
     CROW_ROUTE(app, "/DB/query/history/delete")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "POST, OPTIONS");
+        return JsonHandler::handleCors(req, "POST, GET, OPTIONS");
     });
     CROW_ROUTE(app, "/DB/query/errors/delete")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "POST, OPTIONS");
+        return JsonHandler::handleCors(req, "POST, GET, OPTIONS");
     });
     CROW_ROUTE(app, "/DB/query/history")
     .methods(crow::HTTPMethod::Options)
@@ -260,12 +260,12 @@ void HttpServer::setupCorsRoutes() {
     CROW_ROUTE(app, "/add")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
     });
     CROW_ROUTE(app, "/update")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
     });
     CROW_ROUTE(app, "/get/list")
     .methods(crow::HTTPMethod::Options)
@@ -275,10 +275,10 @@ void HttpServer::setupCorsRoutes() {
 }
 void HttpServer::run (int port) {
     CROW_LOG_INFO << "http Server on API starting...";
-    std::cout << "Database Server is running on http://localhost:" << port << std::endl;
-    HttpServer::setupRoutes();
-    CROW_LOG_INFO << "Routers was set up...";
     HttpServer::setupCorsRoutes();
     CROW_LOG_INFO << "Cors was set up...";
+    HttpServer::setupRoutes();
+    CROW_LOG_INFO << "Routers was set up...";
     app.port(port).multithreaded().run();
+    std::cout << "Database Server is running on http://localhost:" << port << std::endl;
 }
