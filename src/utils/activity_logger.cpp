@@ -158,7 +158,6 @@ void ActivityLogger::logQuery(const std::string& database, const std::string& qu
         } else if (result.contains("data") && result["data"].is_array()) {
             auto dataArray = result["data"];
             if (dataArray.size() > 10) {
-                // Only store first 10 rows
                 nlohmann::json limitedResult = result;
                 limitedResult["data"] = nlohmann::json::array();
                 for (size_t i = 0; i < 10 && i < dataArray.size(); ++i) {
@@ -214,9 +213,7 @@ bool ActivityLogger::deleteLogById(size_t id) {
 
     if (it != entries.end()) {
         entries.erase(it);
-
         rewriteLogFile();
-
         return true;
     }
     return false;
@@ -253,12 +250,126 @@ nlohmann::json ActivityLogger::getLogById(size_t id) const {
     return nlohmann::json{{"error", "Log not found"}};
 }
 
-nlohmann::json ActivityLogger::getLogsByDatabase(const std::string& database, size_t limit, size_t offset) const {
+size_t ActivityLogger::deleteLogsBySuccess(std::optional<bool> successFilter) {
     std::lock_guard<std::mutex> lock(mutex);
 
+    size_t deletedCount = 0;
+
+    if (successFilter.has_value()) {
+        auto it = std::remove_if(entries.begin(), entries.end(),
+            [successFilter, &deletedCount](const LogEntry& entry) {
+                if (entry.success == successFilter.value()) {
+                    deletedCount++;
+                    return true;
+                }
+                return false;
+            });
+        entries.erase(it, entries.end());
+    } else {
+        deletedCount = entries.size();
+        entries.clear();
+    }
+
+    if (deletedCount > 0) {
+        rewriteLogFile();
+    }
+
+    return deletedCount;
+}
+
+size_t ActivityLogger::deleteLogsByDatabase(const std::string& database, std::optional<bool> successFilter) {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    size_t deletedCount = 0;
+
+    auto it = std::remove_if(entries.begin(), entries.end(),
+        [&database, successFilter, &deletedCount](const LogEntry& entry) {
+            if (entry.database == database) {
+                if (!successFilter.has_value() || entry.success == successFilter.value()) {
+                    deletedCount++;
+                    return true;
+                }
+            }
+            return false;
+        });
+
+    entries.erase(it, entries.end());
+
+    if (deletedCount > 0) {
+        rewriteLogFile();
+    }
+
+    return deletedCount;
+}
+
+nlohmann::json ActivityLogger::getLogsByDatabase(const std::string& database, size_t limit,
+                                                 size_t offset, std::optional<bool> successFilter) const {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    // Filter logs by database and success
     std::vector<const LogEntry*> filteredEntries;
     for (const auto& entry : entries) {
         if (entry.database == database) {
+            if (!successFilter.has_value() || entry.success == successFilter.value()) {
+                filteredEntries.push_back(&entry);
+            }
+        }
+    }
+
+    nlohmann::json result = nlohmann::json::array();
+
+    size_t start = std::min(offset, filteredEntries.size());
+    size_t end = std::min(start + limit, filteredEntries.size());
+
+    for (size_t i = start; i < end; ++i) {
+        const auto& entry = *filteredEntries[filteredEntries.size() - 1 - i]; // Newest first
+
+        nlohmann::json jsonEntry = {
+            {"id", entry.id},
+            {"timestamp", formatTimestamp(entry.timestamp)},
+            {"action", actionTypeToString(entry.action)},
+            {"database", entry.database},
+            {"details", entry.details},
+            {"query", entry.query},
+            {"success", entry.success}
+        };
+
+        if (!entry.error.empty()) {
+            jsonEntry["error"] = entry.error;
+        }
+
+        if (!entry.result.is_null()) {
+            jsonEntry["result"] = entry.result;
+        }
+
+        result.push_back(jsonEntry);
+    }
+
+    // Исправление для MSVC - используем nlohmann::json() вместо nullptr
+    nlohmann::json responseJson = {
+        {"logs", result},
+        {"total", filteredEntries.size()},
+        {"offset", offset},
+        {"limit", limit},
+        {"database", database}
+    };
+
+    if (successFilter.has_value()) {
+        responseJson["success_filter"] = successFilter.value();
+    } else {
+        responseJson["success_filter"] = nlohmann::json(); // null value
+    }
+
+    return responseJson;
+}
+
+nlohmann::json ActivityLogger::getLogsAsJson(size_t limit, size_t offset, std::optional<bool> successFilter) const {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    // Filter logs by success if specified
+    std::vector<const LogEntry*> filteredEntries;
+    for (const auto& entry : entries) {
+        if (!successFilter.has_value() || entry.success == successFilter.value()) {
             filteredEntries.push_back(&entry);
         }
     }
@@ -292,66 +403,44 @@ nlohmann::json ActivityLogger::getLogsByDatabase(const std::string& database, si
         result.push_back(jsonEntry);
     }
 
-    return {
+    nlohmann::json responseJson = {
         {"logs", result},
         {"total", filteredEntries.size()},
         {"offset", offset},
-        {"limit", limit},
-        {"database", database}
-    };
-}
-
-nlohmann::json ActivityLogger::getLogsAsJson(size_t limit, size_t offset) const {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    nlohmann::json result = nlohmann::json::array();
-
-    size_t start = std::min(offset, entries.size());
-    size_t end = std::min(start + limit, entries.size());
-
-    for (size_t i = start; i < end; ++i) {
-        const auto& entry = entries[entries.size() - 1 - i]; // Newest first
-
-        nlohmann::json jsonEntry = {
-            {"id", entry.id},
-            {"timestamp", formatTimestamp(entry.timestamp)},
-            {"action", actionTypeToString(entry.action)},
-            {"database", entry.database},
-            {"details", entry.details},
-            {"query", entry.query},
-            {"success", entry.success}
-        };
-
-        if (!entry.error.empty()) {
-            jsonEntry["error"] = entry.error;
-        }
-
-        if (!entry.result.is_null()) {
-            jsonEntry["result"] = entry.result;
-        }
-
-        result.push_back(jsonEntry);
-    }
-
-    return {
-        {"logs", result},
-        {"total", entries.size()},
-        {"offset", offset},
         {"limit", limit}
     };
+
+    if (successFilter.has_value()) {
+        responseJson["success_filter"] = successFilter.value();
+    } else {
+        responseJson["success_filter"] = nlohmann::json(); // null value
+    }
+
+    return responseJson;
 }
 
-std::string ActivityLogger::getLogsAsText(size_t limit, size_t offset) const {
+std::string ActivityLogger::getLogsAsText(size_t limit, size_t offset, std::optional<bool> successFilter) const {
     std::lock_guard<std::mutex> lock(mutex);
 
     std::stringstream ss;
-    ss << "=== ACTIVITY LOG ===\n\n";
+    ss << "=== ACTIVITY LOG ===\n";
+    if (successFilter.has_value()) {
+        ss << "Filter: " << (successFilter.value() ? "SUCCESS ONLY" : "ERRORS ONLY") << "\n";
+    }
+    ss << "\n";
 
-    size_t start = std::min(offset, entries.size());
-    size_t end = std::min(start + limit, entries.size());
+    std::vector<const LogEntry*> filteredEntries;
+    for (const auto& entry : entries) {
+        if (!successFilter.has_value() || entry.success == successFilter.value()) {
+            filteredEntries.push_back(&entry);
+        }
+    }
+
+    size_t start = std::min(offset, filteredEntries.size());
+    size_t end = std::min(start + limit, filteredEntries.size());
 
     for (size_t i = start; i < end; ++i) {
-        const auto& entry = entries[entries.size() - 1 - i];
+        const auto& entry = *filteredEntries[filteredEntries.size() - 1 - i];
 
         ss << "[" << formatTimestamp(entry.timestamp) << "] ";
         ss << "ID: " << entry.id << " | ";
@@ -377,17 +466,24 @@ std::string ActivityLogger::getLogsAsText(size_t limit, size_t offset) const {
     return ss.str();
 }
 
-std::string ActivityLogger::getLogsAsCsv(size_t limit, size_t offset) const {
+std::string ActivityLogger::getLogsAsCsv(size_t limit, size_t offset, std::optional<bool> successFilter) const {
     std::lock_guard<std::mutex> lock(mutex);
 
     std::stringstream ss;
     ss << "ID,Timestamp,Action,Database,Success,Query,Details,Error\n";
 
-    size_t start = std::min(offset, entries.size());
-    size_t end = std::min(start + limit, entries.size());
+    std::vector<const LogEntry*> filteredEntries;
+    for (const auto& entry : entries) {
+        if (!successFilter.has_value() || entry.success == successFilter.value()) {
+            filteredEntries.push_back(&entry);
+        }
+    }
+
+    size_t start = std::min(offset, filteredEntries.size());
+    size_t end = std::min(start + limit, filteredEntries.size());
 
     for (size_t i = start; i < end; ++i) {
-        const auto& entry = entries[entries.size() - 1 - i];
+        const auto& entry = *filteredEntries[filteredEntries.size() - 1 - i];
 
         ss << entry.id << ",";
         ss << "\"" << formatTimestamp(entry.timestamp) << "\",";
@@ -395,7 +491,6 @@ std::string ActivityLogger::getLogsAsCsv(size_t limit, size_t offset) const {
         ss << "\"" << entry.database << "\",";
         ss << "\"" << (entry.success ? "YES" : "NO") << "\",";
 
-        // Escape quotes in query
         std::string escapedQuery = entry.query;
         std::replace(escapedQuery.begin(), escapedQuery.end(), '"', '\'');
         ss << "\"" << escapedQuery << "\",";

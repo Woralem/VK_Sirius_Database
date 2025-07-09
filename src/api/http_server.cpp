@@ -50,7 +50,6 @@ void HttpServer::setupRoutes() {
         return JsonHandler::handleQuery(req, dbManager);
     });
 
-    // Log routes
     CROW_ROUTE(app, "/api/logs")
     .methods(crow::HTTPMethod::Get)
     ([this](const crow::request& req){
@@ -69,10 +68,22 @@ void HttpServer::setupRoutes() {
         return JsonHandler::handleClearLogs(req, dbManager);
     });
 
+    CROW_ROUTE(app, "/api/logs")
+    .methods(crow::HTTPMethod::Delete)
+    ([this](const crow::request& req){
+        return JsonHandler::handleBulkDeleteLogs(req, dbManager);
+    });
+
     CROW_ROUTE(app, "/api/logs/database/<string>")
     .methods(crow::HTTPMethod::Get)
     ([this](const crow::request& req, const std::string& database){
         return JsonHandler::handleGetLogsByDatabase(req, database, dbManager);
+    });
+
+    CROW_ROUTE(app, "/api/logs/database/<string>")
+    .methods(crow::HTTPMethod::Delete)
+    ([this](const crow::request& req, const std::string& database){
+        return JsonHandler::handleBulkDeleteLogsByDatabase(req, database, dbManager);
     });
 
     CROW_ROUTE(app, "/api/logs/<int>")
@@ -146,7 +157,7 @@ void HttpServer::setupCorsRoutes() {
     CROW_ROUTE(app, "/api/logs")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
+        return JsonHandler::handleCors(req, "GET, DELETE, OPTIONS");
     });
 
     CROW_ROUTE(app, "/api/logs/download")
@@ -170,7 +181,7 @@ void HttpServer::setupCorsRoutes() {
     CROW_ROUTE(app, "/api/logs/database/<string>")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req, const std::string&){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
+        return JsonHandler::handleCors(req, "GET, DELETE, OPTIONS");
     });
 
     CROW_ROUTE(app, "/api/logs/<int>")

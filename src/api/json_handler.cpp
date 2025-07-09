@@ -293,6 +293,7 @@ crow::response JsonHandler::handleGetLogs(const crow::request& req, std::shared_
         size_t limit = 100;
         size_t offset = 0;
         std::string format = "json";
+        std::optional<bool> successFilter = std::nullopt;
 
         if (req.url_params.get("limit")) {
             limit = std::stoul(req.url_params.get("limit"));
@@ -303,19 +304,27 @@ crow::response JsonHandler::handleGetLogs(const crow::request& req, std::shared_
         if (req.url_params.get("format")) {
             format = req.url_params.get("format");
         }
+        if (req.url_params.get("success")) {
+            std::string successParam = req.url_params.get("success");
+            if (successParam == "true") {
+                successFilter = true;
+            } else if (successParam == "false") {
+                successFilter = false;
+            }
+        }
 
         if (format == "text") {
-            crow::response resp(logger.getLogsAsText(limit, offset));
+            crow::response resp(logger.getLogsAsText(limit, offset, successFilter));
             resp.add_header("Content-Type", "text/plain");
             resp.add_header("Access-Control-Allow-Origin", "*");
             return resp;
         } else if (format == "csv") {
-            crow::response resp(logger.getLogsAsCsv(limit, offset));
+            crow::response resp(logger.getLogsAsCsv(limit, offset, successFilter));
             resp.add_header("Content-Type", "text/csv");
             resp.add_header("Access-Control-Allow-Origin", "*");
             return resp;
         } else {
-            return createJsonResponse(200, logger.getLogsAsJson(limit, offset));
+            return createJsonResponse(200, logger.getLogsAsJson(limit, offset, successFilter));
         }
 
     } catch (const std::exception& e) {
@@ -331,8 +340,18 @@ crow::response JsonHandler::handleDownloadLogs(const crow::request& req, std::sh
         auto& logger = ActivityLogger::getInstance();
 
         std::string format = "text";
+        std::optional<bool> successFilter = std::nullopt;
+
         if (req.url_params.get("format")) {
             format = req.url_params.get("format");
+        }
+        if (req.url_params.get("success")) {
+            std::string successParam = req.url_params.get("success");
+            if (successParam == "true") {
+                successFilter = true;
+            } else if (successParam == "false") {
+                successFilter = false;
+            }
         }
 
         logger.logDatabaseAction(ActivityLogger::ActionType::LOG_DOWNLOADED, "system",
@@ -341,15 +360,15 @@ crow::response JsonHandler::handleDownloadLogs(const crow::request& req, std::sh
         crow::response resp;
 
         if (format == "csv") {
-            resp.body = logger.getLogsAsCsv(10000, 0);
+            resp.body = logger.getLogsAsCsv(SIZE_MAX, 0, successFilter);
             resp.add_header("Content-Type", "text/csv");
             resp.add_header("Content-Disposition", "attachment; filename=\"activity_log.csv\"");
         } else if (format == "json") {
-            resp.body = logger.getLogsAsJson(10000, 0).dump(2);
+            resp.body = logger.getLogsAsJson(SIZE_MAX, 0, successFilter).dump(2);
             resp.add_header("Content-Type", "application/json");
             resp.add_header("Content-Disposition", "attachment; filename=\"activity_log.json\"");
         } else {
-            resp.body = logger.getLogsAsText(10000, 0);
+            resp.body = logger.getLogsAsText(SIZE_MAX, 0, successFilter);
             resp.add_header("Content-Type", "text/plain");
             resp.add_header("Content-Disposition", "attachment; filename=\"activity_log.txt\"");
         }
@@ -386,19 +405,24 @@ crow::response JsonHandler::handleClearLogs(const crow::request& req, std::share
 crow::response JsonHandler::handleGetLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager) {
     try {
         auto& logger = ActivityLogger::getInstance();
-
         size_t limit = 100;
         size_t offset = 0;
-
+        std::optional<bool> successFilter = std::nullopt;
         if (req.url_params.get("limit")) {
             limit = std::stoul(req.url_params.get("limit"));
         }
         if (req.url_params.get("offset")) {
             offset = std::stoul(req.url_params.get("offset"));
         }
-
-        return createJsonResponse(200, logger.getLogsByDatabase(database, limit, offset));
-
+        if (req.url_params.get("success")) {
+            std::string successParam = req.url_params.get("success");
+            if (successParam == "true") {
+                successFilter = true;
+            } else if (successParam == "false") {
+                successFilter = false;
+            }
+        }
+        return createJsonResponse(200, logger.getLogsByDatabase(database, limit, offset, successFilter));
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
@@ -411,19 +435,16 @@ crow::response JsonHandler::handleGetLogById(const crow::request& req, int id, s
     try {
         auto& logger = ActivityLogger::getInstance();
         auto log = logger.getLogById(static_cast<size_t>(id));
-
         if (log.contains("error")) {
             return createJsonResponse(404, json{
                 {"status", "error"},
                 {"message", "Log not found"}
             });
         }
-
         return createJsonResponse(200, json{
             {"status", "success"},
             {"log", log}
         });
-
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
             {"status", "error"},
@@ -435,7 +456,6 @@ crow::response JsonHandler::handleGetLogById(const crow::request& req, int id, s
 crow::response JsonHandler::handleDeleteLog(const crow::request& req, int id, std::shared_ptr<DatabaseManager> dbManager) {
     try {
         auto& logger = ActivityLogger::getInstance();
-
         if (logger.deleteLogById(static_cast<size_t>(id))) {
             return createJsonResponse(200, json{
                 {"status", "success"},
@@ -447,6 +467,84 @@ crow::response JsonHandler::handleDeleteLog(const crow::request& req, int id, st
                 {"message", "Log not found"}
             });
         }
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", e.what()}
+        });
+    }
+}
+
+crow::response JsonHandler::handleBulkDeleteLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto& logger = ActivityLogger::getInstance();
+
+        std::optional<bool> successFilter = std::nullopt;
+
+        if (req.url_params.get("success")) {
+            std::string successParam = req.url_params.get("success");
+            if (successParam == "true") {
+                successFilter = true;
+            } else if (successParam == "false") {
+                successFilter = false;
+            }
+        }
+
+        size_t deletedCount = logger.deleteLogsBySuccess(successFilter);
+
+        std::string message;
+        if (successFilter.has_value()) {
+            message = std::format("Deleted {} {} logs", deletedCount,
+                                successFilter.value() ? "successful" : "error");
+        } else {
+            message = std::format("Deleted all {} logs", deletedCount);
+        }
+
+        return createJsonResponse(200, json{
+            {"status", "success"},
+            {"message", message},
+            {"deleted_count", deletedCount}
+        });
+
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", e.what()}
+        });
+    }
+}
+
+crow::response JsonHandler::handleBulkDeleteLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto& logger = ActivityLogger::getInstance();
+
+        std::optional<bool> successFilter = std::nullopt;
+
+        if (req.url_params.get("success")) {
+            std::string successParam = req.url_params.get("success");
+            if (successParam == "true") {
+                successFilter = true;
+            } else if (successParam == "false") {
+                successFilter = false;
+            }
+        }
+
+        size_t deletedCount = logger.deleteLogsByDatabase(database, successFilter);
+
+        std::string message;
+        if (successFilter.has_value()) {
+            message = std::format("Deleted {} {} logs from database '{}'", deletedCount,
+                                successFilter.value() ? "successful" : "error", database);
+        } else {
+            message = std::format("Deleted {} logs from database '{}'", deletedCount, database);
+        }
+
+        return createJsonResponse(200, json{
+            {"status", "success"},
+            {"message", message},
+            {"deleted_count", deletedCount},
+            {"database", database}
+        });
 
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{

@@ -18,10 +18,12 @@ public:
     [[nodiscard]] static crow::response handleGetLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
     [[nodiscard]] static crow::response handleDownloadLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
     [[nodiscard]] static crow::response handleClearLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
-
     [[nodiscard]] static crow::response handleGetLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager);
     [[nodiscard]] static crow::response handleGetLogById(const crow::request& req, int id, std::shared_ptr<DatabaseManager> dbManager);
     [[nodiscard]] static crow::response handleDeleteLog(const crow::request& req, int id, std::shared_ptr<DatabaseManager> dbManager);
+
+    [[nodiscard]] static crow::response handleBulkDeleteLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
+    [[nodiscard]] static crow::response handleBulkDeleteLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager);
 
     [[nodiscard]] static crow::response createJsonResponse(int code, const nlohmann::json& body);
 

@@ -14,6 +14,7 @@ function App() {
     const [showLogs, setShowLogs] = useState(false);
     const [logs, setLogs] = useState([]);
     const [logsLoading, setLogsLoading] = useState(false);
+    const [logFilter, setLogFilter] = useState('all'); // 'all', 'success', 'error'
 
     // Загрузка списка БД при монтировании компонента
     useEffect(() => {
@@ -32,10 +33,15 @@ function App() {
         }
     };
 
-    const loadLogs = async (limit = 100, offset = 0) => {
+    const loadLogs = async (limit = 100, offset = 0, successFilter = null) => {
         setLogsLoading(true);
         try {
-            const response = await fetch(`/api/logs?limit=${limit}&offset=${offset}`);
+            let url = `/api/logs?limit=${limit}&offset=${offset}`;
+            if (successFilter !== null) {
+                url += `&success=${successFilter}`;
+            }
+
+            const response = await fetch(url);
             const data = await response.json();
             console.log('Loaded logs:', data);
             setLogs(data.logs || []);
@@ -47,18 +53,23 @@ function App() {
         }
     };
 
-    const downloadLogs = async (format = 'text') => {
+    const downloadLogs = async (format = 'text', successFilter = null) => {
         try {
-            const response = await fetch(`/api/logs/download?format=${format}`);
+            let url = `/api/logs/download?format=${format}`;
+            if (successFilter !== null) {
+                url += `&success=${successFilter}`;
+            }
+
+            const response = await fetch(url);
             const blob = await response.blob();
 
-            const url = window.URL.createObjectURL(blob);
+            const url_obj = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = `activity_log.${format}`;
+            a.href = url_obj;
+            a.download = `activity_log${successFilter !== null ? `_${successFilter ? 'success' : 'errors'}` : ''}.${format}`;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(url_obj);
             document.body.removeChild(a);
         } catch (error) {
             console.error('Failed to download logs:', error);
@@ -82,6 +93,71 @@ function App() {
             console.error('Failed to clear logs:', error);
             alert('Failed to clear logs');
         }
+    };
+
+    const bulkDeleteLogs = async (successFilter = null) => {
+        const filterText = successFilter === null ? 'all logs' :
+            successFilter ? 'all successful logs' : 'all error logs';
+
+        if (!window.confirm(`Are you sure you want to delete ${filterText}?`)) {
+            return;
+        }
+
+        try {
+            let url = '/api/logs';
+            if (successFilter !== null) {
+                url += `?success=${successFilter}`;
+            }
+
+            const response = await fetch(url, { method: 'DELETE' });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                await loadLogsWithCurrentFilter();
+                alert(`${data.message} (${data.deleted_count} logs deleted)`);
+            } else {
+                alert('Failed to delete logs: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Failed to bulk delete logs:', error);
+            alert('Failed to delete logs');
+        }
+    };
+
+    const bulkDeleteLogsByDatabase = async (database, successFilter = null) => {
+        const filterText = successFilter === null ? 'all logs' :
+            successFilter ? 'all successful logs' : 'all error logs';
+
+        if (!window.confirm(`Are you sure you want to delete ${filterText} from database "${database}"?`)) {
+            return;
+        }
+
+        try {
+            let url = `/api/logs/database/${database}`;
+            if (successFilter !== null) {
+                url += `?success=${successFilter}`;
+            }
+
+            const response = await fetch(url, { method: 'DELETE' });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                await loadLogsWithCurrentFilter();
+                alert(`${data.message} (${data.deleted_count} logs deleted)`);
+            } else {
+                alert('Failed to delete logs: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Failed to bulk delete logs by database:', error);
+            alert('Failed to delete logs');
+        }
+    };
+
+    const loadLogsWithCurrentFilter = async () => {
+        let successFilter = null;
+        if (logFilter === 'success') successFilter = true;
+        if (logFilter === 'error') successFilter = false;
+        await loadLogs(100, 0, successFilter);
     };
 
     const deleteLogById = async (logId) => {
@@ -118,9 +194,14 @@ function App() {
         }
     };
 
-    const getLogsByDatabase = async (database, limit = 100, offset = 0) => {
+    const getLogsByDatabase = async (database, limit = 100, offset = 0, successFilter = null) => {
         try {
-            const response = await fetch(`/api/logs/database/${database}?limit=${limit}&offset=${offset}`);
+            let url = `/api/logs/database/${database}?limit=${limit}&offset=${offset}`;
+            if (successFilter !== null) {
+                url += `&success=${successFilter}`;
+            }
+
+            const response = await fetch(url);
             const data = await response.json();
             return data;
         } catch (error) {
@@ -178,7 +259,7 @@ function App() {
         const upperQuery = query.toUpperCase().trim();
         if (upperQuery === 'SHOW LOGS' || upperQuery === 'SELECT * FROM LOGS') {
             setShowLogs(true);
-            await loadLogs();
+            await loadLogsWithCurrentFilter();
             return;
         } else if (upperQuery === 'DOWNLOAD LOGS') {
             await downloadLogs('text');
@@ -411,24 +492,82 @@ function App() {
 
     return (
         <div className="App">
-            {/* Activity Logs Button */}
-            <button className="logs-button" onClick={() => { setShowLogs(true); loadLogs(); }}>
+            <button className="logs-button" onClick={() => { setShowLogs(true); loadLogsWithCurrentFilter(); }}>
                 📋 Activity Logs
             </button>
 
-            {/* Logs Modal */}
             {showLogs && (
                 <div className="logs-modal" onClick={() => setShowLogs(false)}>
                     <div className="logs-content" onClick={(e) => e.stopPropagation()}>
                         <div className="logs-header">
                             <h2>Activity Logs</h2>
                             <div className="logs-actions">
-                                <button onClick={() => downloadLogs('text')}>Download TXT</button>
-                                <button onClick={() => downloadLogs('csv')}>Download CSV</button>
-                                <button onClick={() => downloadLogs('json')}>Download JSON</button>
-                                <button onClick={clearLogs} className="delete-btn">Clear Logs</button>
+                                {/* Filter Controls */}
+                                <select
+                                    value={logFilter}
+                                    onChange={(e) => {
+                                        setLogFilter(e.target.value);
+                                        let successFilter = null;
+                                        if (e.target.value === 'success') successFilter = true;
+                                        if (e.target.value === 'error') successFilter = false;
+                                        loadLogs(100, 0, successFilter);
+                                    }}
+                                    style={{marginRight: '10px', padding: '5px'}}
+                                >
+                                    <option value="all">All Logs</option>
+                                    <option value="success">Success Only</option>
+                                    <option value="error">Errors Only</option>
+                                </select>
+
+                                <button onClick={() => downloadLogs('text', logFilter === 'all' ? null : logFilter === 'success')}>
+                                    Download TXT
+                                </button>
+                                <button onClick={() => downloadLogs('csv', logFilter === 'all' ? null : logFilter === 'success')}>
+                                    Download CSV
+                                </button>
+                                <button onClick={() => downloadLogs('json', logFilter === 'all' ? null : logFilter === 'success')}>
+                                    Download JSON
+                                </button>
+
+                                <button onClick={() => bulkDeleteLogs(true)} className="delete-btn">
+                                    Delete All Success
+                                </button>
+                                <button onClick={() => bulkDeleteLogs(false)} className="delete-btn">
+                                    Delete All Errors
+                                </button>
+                                <button onClick={clearLogs} className="delete-btn">
+                                    Clear All Logs
+                                </button>
+
                                 <button onClick={() => setShowLogs(false)}>Close</button>
                             </div>
+                        </div>
+
+                        <div style={{marginBottom: '10px', padding: '10px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '5px'}}>
+                            <label>Database-specific actions: </label>
+                            <select onChange={(e) => {
+                                if (e.target.value) {
+                                    const action = e.target.value.split('|');
+                                    const db = action[0];
+                                    const type = action[1];
+
+                                    if (type === 'success') {
+                                        bulkDeleteLogsByDatabase(db, true);
+                                    } else if (type === 'error') {
+                                        bulkDeleteLogsByDatabase(db, false);
+                                    } else if (type === 'all') {
+                                        bulkDeleteLogsByDatabase(db, null);
+                                    }
+                                    e.target.value = '';
+                                }
+                            }} style={{marginLeft: '10px', padding: '5px'}}>
+                                <option value="">Select action...</option>
+                                {databases.map(db => [
+                                    <option key={`${db}-all`} value={`${db}|all`}>Delete all from "{db}"</option>,
+                                    <option key={`${db}-success`} value={`${db}|success`}>Delete success from "{db}"</option>,
+                                    <option key={`${db}-error`} value={`${db}|error`}>Delete errors from "{db}"</option>
+                                ])}
+                            </select>
                         </div>
 
                         {logsLoading ? (
@@ -455,7 +594,7 @@ function App() {
                                                         const success = await deleteLogById(log.id);
                                                         if (success) {
                                                             console.log('Delete successful, reloading logs...');
-                                                            await loadLogs();
+                                                            await loadLogsWithCurrentFilter();
                                                             alert('Log deleted successfully');
                                                         } else {
                                                             alert('Failed to delete log');

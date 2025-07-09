@@ -11,6 +11,7 @@
 #include <deque>
 #include <memory>
 #include <atomic>
+#include <optional>
 
 class ActivityLogger {
 public:
@@ -79,14 +80,20 @@ public:
                           const std::string& error = "");
 
     void logDatabaseSwitch(const std::string& fromDb, const std::string& toDb);
-
-    nlohmann::json getLogsAsJson(size_t limit = 100, size_t offset = 0) const;
-    std::string getLogsAsText(size_t limit = 100, size_t offset = 0) const;
-    std::string getLogsAsCsv(size_t limit = 100, size_t offset = 0) const;
-
+    nlohmann::json getLogsAsJson(size_t limit = 100, size_t offset = 0,
+                                std::optional<bool> successFilter = std::nullopt) const;
+    std::string getLogsAsText(size_t limit = 100, size_t offset = 0,
+                             std::optional<bool> successFilter = std::nullopt) const;
+    std::string getLogsAsCsv(size_t limit = 100, size_t offset = 0,
+                            std::optional<bool> successFilter = std::nullopt) const;
     bool deleteLogById(size_t id);
     nlohmann::json getLogById(size_t id) const;
-    nlohmann::json getLogsByDatabase(const std::string& database, size_t limit = 100, size_t offset = 0) const;
+
+    nlohmann::json getLogsByDatabase(const std::string& database, size_t limit = 100,
+                                    size_t offset = 0, std::optional<bool> successFilter = std::nullopt) const;
+
+    size_t deleteLogsBySuccess(std::optional<bool> successFilter);
+    size_t deleteLogsByDatabase(const std::string& database, std::optional<bool> successFilter = std::nullopt);
     
     void clearLogs();
     size_t getLogCount() const;
