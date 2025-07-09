@@ -46,14 +46,14 @@ crow::response JsonHandler::handleListDatabases(const crow::request& req, std::s
 crow::response JsonHandler::handleCreateDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
         auto body = json::parse(req.body);
-        if (!body.contains("name") || !body["name"].is_string()) {
+        if (!body.contains("database") || !body["database"].is_string()) {
             return createJsonResponse(400, json{
                 {"status", "error"},
-                {"message", "Request body must contain 'name' field"}
+                {"message", "Request body must contain 'database' field"}
             });
         }
 
-        std::string dbName = body["name"];
+        std::string dbName = body["database"];
 
         if (!validateDatabaseName(dbName)) {
             return createJsonResponse(400, json{
@@ -139,14 +139,14 @@ crow::response JsonHandler::handleRenameDatabase(const crow::request& req, std::
 crow::response JsonHandler::handleDeleteDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
         auto body = json::parse(req.body);
-        if (!body.contains("name") || !body["name"].is_string()) {
+        if (!body.contains("database") || !body["database"].is_string()) {
             return createJsonResponse(400, json{
                 {"status", "error"},
-                {"message", "Request body must contain 'name' field"}
+                {"message", "Request body must contain 'database' field"}
             });
         }
 
-        std::string dbName = body["name"];
+        std::string dbName = body["database"];
 
         if (dbManager->deleteDatabase(dbName)) {
             return createJsonResponse(200, json{
@@ -285,7 +285,6 @@ crow::response JsonHandler::handleCors(const crow::request& req, const std::stri
     return res;
 }
 
-// Новые методы для логов
 crow::response JsonHandler::handleGetLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
         auto& logger = ActivityLogger::getInstance();
@@ -375,6 +374,79 @@ crow::response JsonHandler::handleClearLogs(const crow::request& req, std::share
             {"status", "success"},
             {"message", "Logs cleared successfully"}
         });
+
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", e.what()}
+        });
+    }
+}
+
+crow::response JsonHandler::handleGetLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto& logger = ActivityLogger::getInstance();
+
+        size_t limit = 100;
+        size_t offset = 0;
+
+        if (req.url_params.get("limit")) {
+            limit = std::stoul(req.url_params.get("limit"));
+        }
+        if (req.url_params.get("offset")) {
+            offset = std::stoul(req.url_params.get("offset"));
+        }
+
+        return createJsonResponse(200, logger.getLogsByDatabase(database, limit, offset));
+
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", e.what()}
+        });
+    }
+}
+
+crow::response JsonHandler::handleGetLogById(const crow::request& req, int id, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto& logger = ActivityLogger::getInstance();
+        auto log = logger.getLogById(static_cast<size_t>(id));
+
+        if (log.contains("error")) {
+            return createJsonResponse(404, json{
+                {"status", "error"},
+                {"message", "Log not found"}
+            });
+        }
+
+        return createJsonResponse(200, json{
+            {"status", "success"},
+            {"log", log}
+        });
+
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", e.what()}
+        });
+    }
+}
+
+crow::response JsonHandler::handleDeleteLog(const crow::request& req, int id, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto& logger = ActivityLogger::getInstance();
+
+        if (logger.deleteLogById(static_cast<size_t>(id))) {
+            return createJsonResponse(200, json{
+                {"status", "success"},
+                {"message", "Log deleted successfully"}
+            });
+        } else {
+            return createJsonResponse(404, json{
+                {"status", "error"},
+                {"message", "Log not found"}
+            });
+        }
 
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{

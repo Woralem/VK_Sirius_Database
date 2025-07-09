@@ -37,6 +37,7 @@ function App() {
         try {
             const response = await fetch(`/api/logs?limit=${limit}&offset=${offset}`);
             const data = await response.json();
+            console.log('Loaded logs:', data);
             setLogs(data.logs || []);
         } catch (error) {
             console.error('Failed to load logs:', error);
@@ -80,6 +81,51 @@ function App() {
         } catch (error) {
             console.error('Failed to clear logs:', error);
             alert('Failed to clear logs');
+        }
+    };
+
+    const deleteLogById = async (logId) => {
+        if (!logId) {
+            console.error('No log ID provided');
+            alert('This log entry has no ID and cannot be deleted');
+            return false;
+        }
+
+        try {
+            console.log(`Attempting to delete log with ID: ${logId}`);
+            const response = await fetch(`/api/logs/${logId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Delete response:', data);
+
+            if (data.status === 'success') {
+                console.log(`Successfully deleted log ${logId}`);
+                return true;
+            } else {
+                console.error('Delete failed:', data.message);
+                return false;
+            }
+        } catch (error) {
+            console.error('Failed to delete log:', error);
+            alert(`Failed to delete log: ${error.message}`);
+            return false;
+        }
+    };
+
+    const getLogsByDatabase = async (database, limit = 100, offset = 0) => {
+        try {
+            const response = await fetch(`/api/logs/database/${database}?limit=${limit}&offset=${offset}`);
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Failed to get logs by database:', error);
+            return null;
         }
     };
 
@@ -201,7 +247,7 @@ function App() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: newDbName }),
+                body: JSON.stringify({ database: newDbName }),
             });
 
             const data = await response.json();
@@ -234,7 +280,7 @@ function App() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: dbName }),
+                body: JSON.stringify({ database: dbName }),
             });
 
             const data = await response.json();
@@ -392,8 +438,34 @@ function App() {
                         ) : (
                             <div className="logs-list">
                                 {logs.map((log, index) => (
-                                    <div key={index} className={`log-entry ${log.success ? 'success' : 'error'}`}>
-                                        <div className="log-timestamp">{log.timestamp}</div>
+                                    <div key={log.id || index} className={`log-entry ${log.success ? 'success' : 'error'}`}>
+                                        <div className="log-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px'}}>
+                                            <span className="log-timestamp">{log.timestamp}</span>
+                                            <button
+                                                className="delete-btn"
+                                                style={{padding: '4px 8px', fontSize: '0.8rem', minWidth: 'auto'}}
+                                                onClick={async () => {
+                                                    if (!log.id) {
+                                                        alert('This log entry has no ID and cannot be deleted');
+                                                        return;
+                                                    }
+
+                                                    if (window.confirm(`Delete log entry #${log.id}?`)) {
+                                                        console.log(`Attempting to delete log ${log.id}`);
+                                                        const success = await deleteLogById(log.id);
+                                                        if (success) {
+                                                            console.log('Delete successful, reloading logs...');
+                                                            await loadLogs();
+                                                            alert('Log deleted successfully');
+                                                        } else {
+                                                            alert('Failed to delete log');
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                Delete #{log.id || 'N/A'}
+                                            </button>
+                                        </div>
                                         <div className="log-action">{log.action}</div>
                                         <div>Database: {log.database}</div>
                                         {log.query && <div className="log-query">{log.query}</div>}

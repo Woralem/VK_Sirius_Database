@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 #include <deque>
 #include <memory>
+#include <atomic>
 
 class ActivityLogger {
 public:
@@ -32,6 +33,7 @@ public:
     };
 
     struct LogEntry {
+        size_t id;
         std::chrono::system_clock::time_point timestamp;
         ActionType action;
         std::string database;
@@ -45,40 +47,46 @@ public:
 private:
     static constexpr size_t MAX_LOG_ENTRIES = 10000;
     static constexpr size_t MAX_RESULT_SIZE = 1000; // Max chars for result preview
-    
+
     std::deque<LogEntry> entries;
     mutable std::mutex mutex;
     std::string logFilePath;
     bool persistToFile;
-    
+    std::atomic<size_t> nextId{1};
+
     ActivityLogger();
-    
+
     std::string actionTypeToString(ActionType type) const;
     std::string formatTimestamp(const std::chrono::system_clock::time_point& tp) const;
     std::string truncateResult(const nlohmann::json& result) const;
     void writeToFile(const LogEntry& entry);
+    void rewriteLogFile();
     void rotateLogsIfNeeded();
 
 public:
     static ActivityLogger& getInstance();
-    
+
     // Delete copy constructor and assignment
     ActivityLogger(const ActivityLogger&) = delete;
     ActivityLogger& operator=(const ActivityLogger&) = delete;
-    
-    void logQuery(const std::string& database, const std::string& query, 
-                  const nlohmann::json& parsedAST, const nlohmann::json& result, 
+
+    void logQuery(const std::string& database, const std::string& query,
+                  const nlohmann::json& parsedAST, const nlohmann::json& result,
                   bool success, const std::string& error = "");
-    
-    void logDatabaseAction(ActionType action, const std::string& database, 
+
+    void logDatabaseAction(ActionType action, const std::string& database,
                           const std::string& details = "", bool success = true,
                           const std::string& error = "");
-    
+
     void logDatabaseSwitch(const std::string& fromDb, const std::string& toDb);
-    
+
     nlohmann::json getLogsAsJson(size_t limit = 100, size_t offset = 0) const;
     std::string getLogsAsText(size_t limit = 100, size_t offset = 0) const;
     std::string getLogsAsCsv(size_t limit = 100, size_t offset = 0) const;
+
+    bool deleteLogById(size_t id);
+    nlohmann::json getLogById(size_t id) const;
+    nlohmann::json getLogsByDatabase(const std::string& database, size_t limit = 100, size_t offset = 0) const;
     
     void clearLogs();
     size_t getLogCount() const;
