@@ -52,7 +52,7 @@ namespace TableHandler{
         }
         sql_query.push_back(';');
         crow::json::wvalue db_req;
-        db_req["name"] = db_name;
+        db_req["database"] = db_name;
         db_req["query"] = sql_query;
         cpr::Response db_res = cpr::Post(
         cpr::Url{"http://localhost:8080/api/query"},
@@ -86,7 +86,7 @@ namespace TableHandler{
             });
         }
         json db_req;
-        db_req["name"] = cur_db;
+        db_req["database"] = cur_db;
         db_req["query"] = "ALTER TABLE " + cur_db + " ALTER COLUMN " +
             (std::string)json_request["column_name"].get<std::string>() + " TYPE " +
                 (std::string)json_request["new_type"].get<std::string>() + ";";
@@ -122,7 +122,7 @@ namespace TableHandler{
             });
         }
         json db_req;
-        db_req["name"] = cur_db;
+        db_req["database"] = cur_db;
         db_req["query"] = "ALTER TABLE " + json_request["table_name"].get<std::string>()
         +" RENAME COLUMN " +json_request["old_column_name"].get<std::string>() + " TO " +
                 json_request["new_column_name"].get<std::string>() + ";";
@@ -147,7 +147,7 @@ namespace TableHandler{
             });
         }
         json db_req;
-        db_req["name"] = cur_db;
+        db_req["database"] = cur_db;
         db_req["query"] = json_request["query"].get<std::string>();
         cpr::Response db_res = cpr::Post(
             cpr::Url{"http://localhost:8080/api/query"},

@@ -11,12 +11,13 @@ namespace DBhandler {
     crow::response createDB(const json& json_request) {
         CROW_LOG_INFO << "Creating DB";
         crow::response res;
-        if (!json_request.contains("name") || !json_request["name"].is_string()) {
+        if (!json_request.contains("database") || !json_request["database"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'db_name' field"}
             });
         }
+
         cpr::Response db_res = cpr::Post(
             cpr::Url{"http://localhost:8080/api/db/create"},
             cpr::Body{json_request.dump()},
@@ -56,7 +57,7 @@ namespace DBhandler {
         crow::response res;
         cpr::Response db_res = cpr::Post(
             cpr::Url{"http://localhost:8080/api/db/delete"},
-            cpr::Body{json{{"name", db_name}}.dump()},
+            cpr::Body{json{{"database", db_name}}.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         db_name = "default";
         res.code = db_res.status_code;
@@ -86,7 +87,7 @@ namespace DBhandler {
                 {"message", "Request body must contain 'type' field"}
             });
         }
-        if (json_request.contains("data") && json_request["data"].is_string()) {
+        if (!json_request.contains("data") || !json_request["data"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'data' field"}
@@ -113,6 +114,13 @@ namespace DBhandler {
                 {"message", "Request body must contain 'db_name' field"}
             });
         }
+        json req;
+        req["from"] = cur_db;
+        cur_db = json_request["db_name"].get<std::string>();
+        req["to"] = cur_db;
+        cpr::Response db_res = cpr::Post(
+            cpr::Url{"http://localhost:8080/api/db/switch}"},
+            cpr::Body{req.dump()});
         cur_db = json_request["db_name"].get<std::string>();
         return JsonHandler::createJsonResponse(200, json{
             {"status", "success"},

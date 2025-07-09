@@ -1,5 +1,6 @@
 #include <crow.h>
 #include<string>
+#include<format>
 #include<cpr/cpr.h>
 #include<nlohmann/json.hpp>
 
@@ -11,11 +12,12 @@ namespace LogHandler {
     crow::response getQueries(const std::string& cur_db) {
         crow::response res;
         json db_request;
-        db_request["name"] = cur_db;
-        cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ТАБЛИЦЫ ЗАПРОСОВ"},
-            cpr::Body{db_request.dump()},
-            cpr::Header{{"Content-Type", "application/json"}});
+        cpr::Response db_res = cpr::Get(
+            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Parameters{
+                {"success", "true"}
+            });
+
         res.code = db_res.status_code;
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
@@ -26,12 +28,11 @@ namespace LogHandler {
     }
     crow::response getErrors(const std::string& cur_db) {
         crow::response res;
-        json db_request;
-        db_request["name"] = cur_db;
-        cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ТАБЛИЦЫ ОШИБОК"},
-            cpr::Body{db_request.dump()},
-            cpr::Header{{"Content-Type", "application/json"}});
+        cpr::Response db_res = cpr::Get(
+            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Parameters{
+                {"success", "false"}
+            });
         res.code = db_res.status_code;
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
@@ -50,13 +51,8 @@ namespace LogHandler {
             });
         }
         std::string id = json_request["id"].get<std::string>();
-        json db_request;
-        db_request["name"] = cur_db;
-        db_request["id"] = id;
-        cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/УДАЛЕНИЕ ЗАПРОСА ПО ID"},
-            cpr::Body{db_request.dump()},
-            cpr::Header{{"Content-Type", "application/json"}});
+        cpr::Response db_res = cpr::Delete(
+            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", id)});
         res.code = db_res.status_code;
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
@@ -68,12 +64,9 @@ namespace LogHandler {
     }
     crow::response deleteQueries(const std::string& cur_db) {
         crow::response res;
-        json db_request;
-        db_request["name"] = cur_db;
-        cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/ЕНДПОИН ДЛЯ УДАЛЕНИЕ ВСЕХ ЗАПРОСОВ"},
-            cpr::Body{db_request.dump()},
-            cpr::Header{{"Content-Type", "application/json"}});
+        cpr::Response db_res = cpr::Delete(
+            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Parameters{{"success", "true"}});
         res.code = db_res.status_code;
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
@@ -92,13 +85,8 @@ namespace LogHandler {
             });
         }
         std::string id = json_request["id"].get<std::string>();
-        json db_request;
-        db_request["name"] = cur_db;
-        db_request["id"] = id;
-        cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ УДАЛЕНИЕ ОШИБКИ ПО ID"},
-            cpr::Body{db_request.dump()},
-            cpr::Header{{"Content-Type", "application/json"}});
+        cpr::Response db_res = cpr::Delete(
+            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", id)});
         res.code = db_res.status_code;
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
@@ -109,12 +97,9 @@ namespace LogHandler {
     }
     crow::response deleteErrors(const std::string& cur_db) {
         crow::response res;
-        json db_request;
-        db_request["name"] = cur_db;
-        cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/ЕНДПОИНТ УДАЛЕНИЯ ВСЕХ ОШИБОК"},
-            cpr::Body{db_request.dump()},
-            cpr::Header{{"Content-Type", "application/json"}});
+        cpr::Response db_res = cpr::Delete(
+            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Parameters{{"success", "false"}});
         res.code = db_res.status_code;
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
