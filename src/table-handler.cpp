@@ -161,6 +161,7 @@ namespace TableHandler{
             res.add_header(key, value);
         }
         res.add_header("Access-Control-Allow-Origin", "*");
+        res.add_header("Content-Type", "application/json");
         res.body = db_res.text;
         return res;
     }

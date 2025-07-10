@@ -1,4 +1,5 @@
 #include <crow.h>
+#include<crow/middlewares/cors.h>
 #include<cpr/cpr.h>
 #include<string>
 //#include<vector>
@@ -197,6 +198,13 @@ void HttpServer::setupRoutes() {
     });
 }
 void HttpServer::setupCorsRoutes() {
+    auto& cors = app.get_middleware<crow::CORSHandler>();
+    // Разрешаем все origins, методы и заголовки (аналог CORS(app) в Flask)
+    cors
+      .global()
+      .headers("*")
+      .methods("GET"_method, "POST"_method, "PUT"_method, "DELETE"_method)
+      .origin("*");
     CROW_ROUTE(app, "/changeDB")
         .methods(crow::HTTPMethod::Options)
         ([](const crow::request& req){
