@@ -24,6 +24,9 @@ namespace query_engine {
         // Pattern matching
         LIKE,
 
+        // IN operator - renamed to avoid conflicts
+        IN_TOKEN,
+
         // New keywords for table options
         WITH, OPTIONS, TYPES, MAX_COLUMN_LENGTH,
         ADDITIONAL_CHARS, MAX_STRING_LENGTH, GC_FREQUENCY,

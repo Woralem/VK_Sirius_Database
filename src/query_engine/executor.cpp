@@ -1,10 +1,12 @@
 #include "query_engine/executor.h"
 #include "utils/logger.h"
+#include "query_engine/ast.h"
 #include "config.h"
 #include "utils.h"
 #include <regex>
 #include <format>
 #include <ranges>
+#include <type_traits>
 
 namespace query_engine {
 
@@ -69,7 +71,7 @@ QueryExecutor::QueryExecutor(std::shared_ptr<StorageInterface> storage)
 nlohmann::json QueryExecutor::execute(const ASTNodePtr& ast) {
     if (!ast) {
         if (enableLogging) LOGF_ERROR("Executor", "Received null AST");
-        return {{"error", "Invalid AST"}};
+        return {{"status", "error"}, {"message", "Invalid AST"}};
     }
 
     if (enableLogging) {
@@ -103,18 +105,25 @@ nlohmann::json QueryExecutor::execute(const ASTNodePtr& ast) {
                 break;
             default:
                 if (enableLogging) LOGF_ERROR("Executor", "Unknown statement type");
-                return {{"error", "Unknown statement type"}};
+                return {{"status", "error"}, {"message", "Unknown statement type"}};
+        }
+
+        if (result.contains("status") && result["status"] == "error") {
+            if (enableLogging) LOGF_ERROR("Executor", "Execution failed");
+            return result;
         }
 
         if (enableLogging) LOGF_SUCCESS("Executor", "Execution completed successfully");
         return result;
 
-    } catch (const std::exception& e) {
+    } catch (const std::runtime_error& e) {
         if (enableLogging) LOGF_ERROR("Executor", "Execution failed: {}", e.what());
-        return {{"error", e.what()}};
+        return {{"status", "error"}, {"message", e.what()}};
+    } catch (const std::exception& e) {
+        if (enableLogging) LOGF_ERROR("Executor", "Unexpected error: {}", e.what());
+        return {{"status", "error"}, {"message", std::string("Unexpected error: ") + e.what()}};
     }
 }
-
 nlohmann::json QueryExecutor::executeSelect(const SelectStmt* stmt) {
     if (enableLogging) {
         LOGF_INFO("Executor", "Executing SELECT from table: {}", stmt->tableName);
@@ -289,7 +298,7 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
             message = success ? "Column type changed successfully" : "Failed to change column type";
             break;
 
-                case AlterTableStmt::AlterType::DROP_COLUMN:
+        case AlterTableStmt::AlterType::DROP_COLUMN:
             if (enableLogging) {
                 LOGF_DEBUG("Executor", "Dropping column '{}'", stmt->columnName);
             }
@@ -345,6 +354,96 @@ nlohmann::json QueryExecutor::executeDropTable(const DropTableStmt* stmt) {
     return result;
 }
 
+std::vector<Value> QueryExecutor::executeSubquery(const SubqueryExpr* subquery) {
+    //bool oldLogging = enableLogging;
+    //enableLogging = true;
+
+    LOGF_DEBUG("Executor", "=== Executing subquery ===");
+
+    auto result = executeSelect(subquery->selectStmt.get());
+
+    if (!result.contains("cells") || !result["cells"].is_array()) {
+        // enableLogging = oldLogging;
+        throw std::runtime_error("Subquery did not return valid data");
+    }
+
+    if (result.contains("header")) {
+        LOGF_DEBUG("Executor", "Subquery header exists, size: {}", result["header"].size());
+        if (result["header"].is_array()) {
+            for (size_t i = 0; i < result["header"].size(); ++i) {
+                if (result["header"][i].contains("content")) {
+                    LOGF_DEBUG("Executor", "Header[{}]: {}", i, result["header"][i]["content"].get<std::string>());
+                }
+            }
+        }
+    } else {
+        LOGF_DEBUG("Executor", "Subquery header does not exist");
+    }
+
+    auto& cells = result["cells"];
+    if (!cells.empty()) {
+        const auto& firstRow = cells[0];
+        if (firstRow.is_array()) {
+            LOGF_DEBUG("Executor", "First row size: {}", firstRow.size());
+        }
+    }
+
+    if (result.contains("header") && result["header"].is_array()) {
+        size_t headerSize = result["header"].size();
+        LOGF_DEBUG("Executor", "Checking header size: {}", headerSize);
+        if (headerSize != 1) {
+            std::string errorMsg = std::format("Subquery must return exactly one column, but got {}", headerSize);
+            LOGF_ERROR("Executor", "{}", errorMsg);
+            // enableLogging = oldLogging;
+            throw std::runtime_error(errorMsg);
+        }
+    } else {
+        if (!cells.empty()) {
+            const auto& firstRow = cells[0];
+            if (firstRow.is_array()) {
+                size_t colCount = firstRow.size();
+                LOGF_DEBUG("Executor", "Checking first row size: {}", colCount);
+                if (colCount != 1) {
+                    std::string errorMsg = std::format("Subquery must return exactly one column, but got {}", colCount);
+                    LOGF_ERROR("Executor", "{}", errorMsg);
+                    // enableLogging = oldLogging;
+                    throw std::runtime_error(errorMsg);
+                }
+            }
+        }
+    }
+
+    std::vector<Value> values;
+    values.reserve(cells.size());
+
+    for (const auto& row : cells) {
+        if (!row.is_array() || row.empty()) continue;
+
+        const auto& cell = row[0];
+        if (!cell.contains("content")) continue;
+
+        const auto& content = cell["content"];
+
+        if (content.is_null()) {
+            continue;
+        } else if (content.is_number_integer()) {
+            values.push_back(content.get<int64_t>());
+        } else if (content.is_number_float()) {
+            values.push_back(content.get<double>());
+        } else if (content.is_string()) {
+            values.push_back(content.get<std::string>());
+        } else if (content.is_boolean()) {
+            values.push_back(content.get<bool>());
+        }
+    }
+
+    LOGF_DEBUG("Executor", "Subquery returned {} values", values.size());
+    LOGF_DEBUG("Executor", "=== Subquery execution complete ===");
+
+    // enableLogging = oldLogging;
+    return values;
+}
+
 Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::json& row) {
     if (!expr) {
         return std::monostate{};
@@ -389,7 +488,7 @@ Value QueryExecutor::evaluateExpression(const ASTNode* expr, const nlohmann::jso
     }
 }
 
-    bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
+bool compareValues(const Value& left, const Value& right, BinaryExpr::Operator op) {
     if (op == BinaryExpr::Operator::LIKE) {
         if (!std::holds_alternative<std::string>(left) || !std::holds_alternative<std::string>(right)) {
             return false;
@@ -439,6 +538,65 @@ bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json&
 
     if (expr->type == ASTNode::Type::BINARY_EXPR) {
         auto* binExpr = static_cast<const BinaryExpr*>(expr);
+
+        if (binExpr->op == BinaryExpr::Operator::LIKE) {
+            Value leftVal = evaluateExpression(binExpr->left.get(), row);
+            Value rightVal = evaluateExpression(binExpr->right.get(), row);
+
+            if (std::holds_alternative<std::string>(leftVal) &&
+                std::holds_alternative<std::string>(rightVal)) {
+                const std::string& text = std::get<std::string>(leftVal);
+                const std::string& pattern = std::get<std::string>(rightVal);
+                return matchLikePattern(text, pattern);
+            }
+            return false;
+        }
+
+        if (binExpr->op == BinaryExpr::Operator::IN_OP) {
+            auto leftValue = evaluateExpression(binExpr->left.get(), row);
+
+            if (auto subqueryExpr = dynamic_cast<const SubqueryExpr*>(binExpr->right.get())) {
+                std::vector<Value> subqueryValues;
+                try {
+                    subqueryValues = executeSubquery(subqueryExpr);
+                } catch (const std::exception& e) {
+                    if (enableLogging) {
+                        LOGF_ERROR("Executor", "Subquery execution failed: {}", e.what());
+                    }
+                    throw;
+                }
+
+                for (const auto& value : subqueryValues) {
+                    bool match = std::visit([&leftValue](const auto& v) -> bool {
+                        return std::visit([&v](const auto& lv) -> bool {
+                            using T1 = std::decay_t<decltype(v)>;
+                            using T2 = std::decay_t<decltype(lv)>;
+
+                            if constexpr (std::is_same_v<T1, std::monostate> ||
+                                         std::is_same_v<T2, std::monostate>) {
+                                return false;
+                            } else if constexpr (std::is_same_v<T1, T2>) {
+                                return v == lv;
+                            } else if constexpr ((std::is_same_v<T1, int64_t> && std::is_same_v<T2, double>) ||
+                                               (std::is_same_v<T1, double> && std::is_same_v<T2, int64_t>)) {
+                                if constexpr (std::is_same_v<T1, int64_t>) {
+                                    return static_cast<double>(v) == lv;
+                                } else {
+                                    return v == static_cast<double>(lv);
+                                }
+                            } else {
+                                return false;
+                            }
+                        }, leftValue);
+                    }, value);
+
+                    if (match) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
 
         if (binExpr->op == BinaryExpr::Operator::AND) {
             bool left = evaluatePredicate(binExpr->left.get(), row);

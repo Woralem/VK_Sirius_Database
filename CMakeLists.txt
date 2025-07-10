@@ -59,6 +59,8 @@ add_executable(run_tests
         tests/new_json_format_tests.cpp
         tests/like_tests.cpp
         tests/drop_tests.cpp
+        tests/subquery_tests.cpp
+        tests/additional_subquery_tests.cpp
 )
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(run_tests PRIVATE nlohmann_json::nlohmann_json)

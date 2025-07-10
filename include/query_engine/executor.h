@@ -81,6 +81,9 @@ protected:
     void appendValueToString(utils::StringBuilder& builder, const Value& value);
     [[nodiscard]] std::string valueToString(const Value& value);
 
+    // Subquery support
+    [[nodiscard]] std::vector<Value> executeSubquery(const SubqueryExpr* subquery);
+
 private:
     // Cache for compiled predicates with smart cleanup
     mutable std::unordered_map<const ASTNode*,

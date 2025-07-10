@@ -1,9 +1,9 @@
 #include "test_framework.h"
+#include <iostream>
 
-// Объявления только тех функций, которые реально реализованы
-void addBasicOperationTests(tests::TestFramework& framework);
 void addDataTypeTests(tests::TestFramework& framework);
-void addNewJsonFormatTests(tests::TestFramework& framework);
+void addSubqueryTests(tests::TestFramework& framework);
+void addAdditionalSubqueryTests(tests::TestFramework& framework);
 
 int main() {
     tests::TestFramework framework;
@@ -11,14 +11,13 @@ int main() {
     std::cout << "\033[1;35m";
     std::cout << "╔══════════════════════════════════════════════════════════════╗\n";
     std::cout << "║               COMPREHENSIVE BACKEND TEST SUITE               ║\n";
-    std::cout << "║              Testing Basic Functionality                     ║\n";
+    std::cout << "║         Testing Basic Functionality + Subqueries            ║\n";
     std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
     std::cout << "\033[0m\n";
 
-    // Добавляем только реализованные тесты
-    addBasicOperationTests(framework);
     addDataTypeTests(framework);
-    addNewJsonFormatTests(framework);
+    addSubqueryTests(framework);
+    addAdditionalSubqueryTests(framework);
 
     framework.runAllTests();
     return 0;

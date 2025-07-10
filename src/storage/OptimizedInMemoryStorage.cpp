@@ -28,30 +28,45 @@ bool OptimizedInMemoryStorage::validateValueForColumn(const Value& value, const 
         std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name << "' cannot be null.\n";
         return false;
     }
+
     if (std::holds_alternative<std::monostate>(value)) return true;
+
     bool type_ok = false;
     switch (colDef.parsedType) {
         case DataType::INT:
             type_ok = std::holds_alternative<int64_t>(value);
+            if (!type_ok) {
+                std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name
+                         << "' expects INT but got different type.\n";
+            }
             break;
         case DataType::DOUBLE:
             type_ok = std::holds_alternative<double>(value) || std::holds_alternative<int64_t>(value);
+            if (!type_ok) {
+                std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name
+                         << "' expects DOUBLE but got different type.\n";
+            }
             break;
         case DataType::VARCHAR:
             type_ok = std::holds_alternative<std::string>(value);
+            if (!type_ok) {
+                std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name
+                         << "' expects VARCHAR but got different type.\n";
+            }
             break;
         case DataType::BOOLEAN:
             type_ok = std::holds_alternative<bool>(value);
+            if (!type_ok) {
+                std::cout << "\033[91m[VALIDATION ERROR]\033[0m Column '" << colDef.name
+                         << "' expects BOOLEAN but got different type.\n";
+            }
             break;
         default:
             type_ok = true;
             break;
     }
-    if (!type_ok) {
-        std::cout << "\033[91m[VALIDATION ERROR]\033[0m Type mismatch for column '" << colDef.name << "'.\n";
-        return false;
-    }
-    return true;
+
+    return type_ok;
 }
 
 // Остальной код остается без изменений...
@@ -92,6 +107,8 @@ void OptimizedInMemoryStorage::setJsonValue(json& row, std::string_view key, con
         if constexpr (std::same_as<T, std::monostate>) {
             row[std::string(key)] = nullptr;
         } else if constexpr (std::same_as<T, int64_t>) {
+            row[std::string(key)] = arg;
+        } else if constexpr (std::same_as<T, double>) {
             row[std::string(key)] = arg;
         } else {
             row[std::string(key)] = arg;

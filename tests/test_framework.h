@@ -21,7 +21,7 @@ private:
     int failed = 0;
 
 public:
-    void addTest(const std::string& name, std::function<bool()> testFunc, 
+    void addTest(const std::string& name, std::function<bool()> testFunc,
                  const std::string& description = "") {
         testCases.push_back({name, testFunc, description});
     }
@@ -43,7 +43,7 @@ public:
 private:
     void runTest(const TestCase& test) {
         std::cout << "\033[94m[TEST]\033[0m " << std::left << std::setw(50) << test.name;
-        
+
         try {
             bool result = test.testFunc();
             if (result) {
@@ -64,7 +64,7 @@ private:
         std::cout << "\033[1;32mPassed: " << passed << "\033[0m | ";
         std::cout << "\033[1;31mFailed: " << failed << "\033[0m | ";
         std::cout << "\033[1;34mTotal: " << (passed + failed) << "\033[0m\n";
-        
+
         if (failed == 0) {
             std::cout << "\033[1;32m🎉 All tests passed!\033[0m\n";
         } else {
@@ -75,27 +75,35 @@ private:
 };
 
 #define ASSERT_TRUE(condition) \
-    if (!(condition)) { \
-        std::cerr << "ASSERTION FAILED: " << #condition << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
-        return false; \
-    }
+    do { \
+        if (!(condition)) { \
+            std::cerr << "\033[91mASSERTION FAILED: " << #condition << " at " << __FILE__ << ":" << __LINE__ << "\033[0m" << std::endl; \
+            return false; \
+        } \
+    } while(0)
 
 #define ASSERT_FALSE(condition) \
-    if (condition) { \
-        std::cerr << "ASSERTION FAILED: !(" << #condition << ") at " << __FILE__ << ":" << __LINE__ << std::endl; \
-        return false; \
-    }
+    do { \
+        if (condition) { \
+            std::cerr << "\033[91mASSERTION FAILED: !(" << #condition << ") at " << __FILE__ << ":" << __LINE__ << "\033[0m" << std::endl; \
+            return false; \
+        } \
+    } while(0)
 
 #define ASSERT_EQ(expected, actual) \
-    if ((expected) != (actual)) { \
-        std::cerr << "ASSERTION FAILED: Expected " << (expected) << " but got " << (actual) << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
-        return false; \
-    }
+    do { \
+        if ((expected) != (actual)) { \
+            std::cerr << "\033[91mASSERTION FAILED: Expected " << (expected) << " but got " << (actual) << " at " << __FILE__ << ":" << __LINE__ << "\033[0m" << std::endl; \
+            return false; \
+        } \
+    } while(0)
 
 #define ASSERT_NOT_NULL(ptr) \
-    if ((ptr) == nullptr) { \
-        std::cerr << "ASSERTION FAILED: " << #ptr << " is null at " << __FILE__ << ":" << __LINE__ << std::endl; \
-        return false; \
-    }
+    do { \
+        if ((ptr) == nullptr) { \
+            std::cerr << "\033[91mASSERTION FAILED: " << #ptr << " is null at " << __FILE__ << ":" << __LINE__ << "\033[0m" << std::endl; \
+            return false; \
+        } \
+    } while(0)
 
-}
+} // namespace tests

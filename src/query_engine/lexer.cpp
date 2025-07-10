@@ -31,6 +31,7 @@ std::string_view tokenTypeToString(TokenType type) noexcept {
         case TokenType::TYPE: return "TYPE";
         case TokenType::DROP: return "DROP";
         case TokenType::LIKE: return "LIKE";
+        case TokenType::IN_TOKEN: return "IN";
         case TokenType::WITH: return "WITH";
         case TokenType::OPTIONS: return "OPTIONS";
         case TokenType::TYPES: return "TYPES";
@@ -84,6 +85,7 @@ const std::unordered_map<std::string_view, TokenType> Lexer::keywords = {
     {"TYPE", TokenType::TYPE},
     {"DROP", TokenType::DROP},
     {"LIKE", TokenType::LIKE},
+    {"IN", TokenType::IN_TOKEN},
     {"WITH", TokenType::WITH},
     {"OPTIONS", TokenType::OPTIONS},
     {"TYPES", TokenType::TYPES},
@@ -190,6 +192,12 @@ Token Lexer::scanToken() {
         case '\'':
             return string();
 
+        case '-':
+            if (current < source.length() && std::isdigit(source[current])) {
+                return number();
+            }
+            return errorToken("Unary minus operator not supported");
+
         default:
             if (std::isdigit(c)) {
                 return number();
@@ -251,11 +259,20 @@ Token Lexer::number() {
         if (isFloat) {
             token.value = std::stod(std::string(text));
         } else {
-            int64_t num = std::stoll(std::string(text));
-            token.value = num;
+            std::string numStr(text);
+
+            try {
+                long long val = std::stoll(numStr);
+                if (val >= std::numeric_limits<int64_t>::min() &&
+                    val <= std::numeric_limits<int64_t>::max()) {
+                    token.value = static_cast<int64_t>(val);
+                    } else {
+                        return errorToken("Number is out of int64_t range");
+                    }
+            } catch (const std::out_of_range&) {
+                return errorToken("Number literal is out of range");
+            }
         }
-    } catch(const std::out_of_range&) {
-        return errorToken("Number literal is out of range");
     } catch(const std::invalid_argument&) {
         return errorToken("Invalid number format");
     }

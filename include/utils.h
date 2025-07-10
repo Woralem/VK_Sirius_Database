@@ -118,7 +118,7 @@ concept AssociativeContainer = requires(Container c, Key k) {
     c.end();
 };
 
-template<AssociativeContainer Container, typename Key>
+template<typename Container, typename Key> requires AssociativeContainer<Container, Key>
 [[nodiscard]] constexpr bool contains(const Container& container, const Key& key) {
     if constexpr (requires { container.contains(key); }) {
         return container.contains(key);

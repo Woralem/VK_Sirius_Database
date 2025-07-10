@@ -18,6 +18,7 @@ const std::unordered_map<TokenType, Parser::ParseRule> Parser::parseRules = {
     {TokenType::EQUALS, {nullptr, binary, Precedence::EQUALITY}},
     {TokenType::NOT_EQUALS, {nullptr, binary, Precedence::EQUALITY}},
     {TokenType::LIKE, {nullptr, binary, Precedence::EQUALITY}},
+    {TokenType::IN_TOKEN, {nullptr, binary, Precedence::EQUALITY}},
     {TokenType::LESS_THAN, {nullptr, binary, Precedence::COMPARISON}},
     {TokenType::GREATER_THAN, {nullptr, binary, Precedence::COMPARISON}},
     {TokenType::LESS_EQUALS, {nullptr, binary, Precedence::COMPARISON}},
@@ -30,6 +31,7 @@ const std::unordered_map<TokenType, BinaryExpr::Operator> Parser::binaryOps = {
     {TokenType::EQUALS, BinaryExpr::Operator::EQ},
     {TokenType::NOT_EQUALS, BinaryExpr::Operator::NE},
     {TokenType::LIKE, BinaryExpr::Operator::LIKE},
+    {TokenType::IN_TOKEN, BinaryExpr::Operator::IN_OP},
     {TokenType::LESS_THAN, BinaryExpr::Operator::LT},
     {TokenType::GREATER_THAN, BinaryExpr::Operator::GT},
     {TokenType::LESS_EQUALS, BinaryExpr::Operator::LE},
@@ -212,6 +214,31 @@ ASTNodePtr Parser::grouping(Parser* parser) {
 
 ASTNodePtr Parser::binary(Parser* parser, ASTNodePtr left) {
     Token opToken = parser->previous();
+
+    if (opToken.type == TokenType::IN_TOKEN) {
+        if (parser->check(TokenType::LEFT_PAREN)) {
+            parser->advance(); // consume '('
+
+            if (parser->check(TokenType::SELECT)) {
+                auto subquery = parser->selectStatement();
+                parser->consume(TokenType::RIGHT_PAREN, "Expected ')' after subquery");
+
+                auto subqueryExpr = std::make_unique<SubqueryExpr>(std::move(subquery));
+                return std::make_unique<BinaryExpr>(
+                    BinaryExpr::Operator::IN_OP,
+                    std::move(left),
+                    std::move(subqueryExpr)
+                );
+            } else {
+                parser->error("IN operator currently only supports subqueries, not literal lists");
+                throw std::runtime_error("IN operator currently only supports subqueries");
+            }
+        } else {
+            parser->error("Expected '(' after IN");
+            throw std::runtime_error("Expected '(' after IN");
+        }
+    }
+
     auto right = parser->parsePrecedence(
         static_cast<Precedence>(static_cast<int>(parseRules.at(opToken.type).precedence) + 1)
     );
@@ -291,6 +318,7 @@ std::unique_ptr<UpdateStmt> Parser::updateStatement() {
     if (match({TokenType::WHERE})) stmt->whereClause = expression();
     return stmt;
 }
+
 std::unique_ptr<DeleteStmt> Parser::deleteStatement() {
     consume(TokenType::DELETE_KEYWORD, "Expected DELETE");
     auto stmt = std::make_unique<DeleteStmt>();
@@ -390,7 +418,7 @@ std::unique_ptr<DropTableStmt> Parser::dropTableStatement() {
     return stmt;
 }
 
-    TableOptions Parser::parseTableOptions() {
+TableOptions Parser::parseTableOptions() {
     TableOptions options;
     if (check(TokenType::RIGHT_PAREN)) return options;
 
@@ -426,6 +454,7 @@ std::unique_ptr<DropTableStmt> Parser::dropTableStatement() {
 
     return options;
 }
+
 std::set<DataType> Parser::parseDataTypeList() {
     std::set<DataType> types;
     if (!check(TokenType::RIGHT_BRACKET)) {

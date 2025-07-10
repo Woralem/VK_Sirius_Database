@@ -68,7 +68,7 @@ struct ASTNode {
         SELECT_STMT, INSERT_STMT, UPDATE_STMT, DELETE_STMT, CREATE_TABLE_STMT, ALTER_TABLE_STMT, DROP_TABLE_STMT,
 
         // Expressions
-        BINARY_EXPR, UNARY_EXPR, LITERAL_EXPR, IDENTIFIER_EXPR,
+        BINARY_EXPR, UNARY_EXPR, LITERAL_EXPR, IDENTIFIER_EXPR, SUBQUERY_EXPR,
 
         // Others
         COLUMN_DEF, TABLE_REF, COLUMN_REF, VALUE_LIST, TABLE_OPTIONS
@@ -111,9 +111,18 @@ struct IdentifierExpr : public Expression {
         : Expression(Type::IDENTIFIER_EXPR), name(name) {}
 };
 
+struct SelectStmt;
+
+struct SubqueryExpr : public Expression {
+    std::unique_ptr<SelectStmt> selectStmt;
+
+    SubqueryExpr(std::unique_ptr<SelectStmt> stmt)
+        : Expression(Type::SUBQUERY_EXPR), selectStmt(std::move(stmt)) {}
+};
+
 struct BinaryExpr : public Expression {
     enum class Operator {
-        EQ, NE, LT, GT, LE, GE, AND, OR, LIKE
+        EQ, NE, LT, GT, LE, GE, AND, OR, LIKE, IN_OP, NOT_IN_OP
     };
 
     Operator op;
@@ -235,10 +244,11 @@ inline std::ostream& operator<<(std::ostream& os, const ASTNode::Type& type) {
         case ASTNode::Type::CREATE_TABLE_STMT:  os << "CREATE_TABLE_STMT"; break;
         case ASTNode::Type::ALTER_TABLE_STMT:   os << "ALTER_TABLE_STMT"; break;
         case ASTNode::Type::DROP_TABLE_STMT:    os << "DROP_TABLE_STMT"; break;
-        case ASTNode::Type::BINARY_EXPR:       os << "BINARY_EXPR"; break;
-        case ASTNode::Type::UNARY_EXPR:        os << "UNARY_EXPR"; break;
-        case ASTNode::Type::LITERAL_EXPR:     os << "LITERAL_EXPR"; break;
-        case ASTNode::Type::IDENTIFIER_EXPR:  os << "IDENTIFIER_EXPR"; break;
+        case ASTNode::Type::BINARY_EXPR:        os << "BINARY_EXPR"; break;
+        case ASTNode::Type::UNARY_EXPR:         os << "UNARY_EXPR"; break;
+        case ASTNode::Type::LITERAL_EXPR:       os << "LITERAL_EXPR"; break;
+        case ASTNode::Type::IDENTIFIER_EXPR:    os << "IDENTIFIER_EXPR"; break;
+        case ASTNode::Type::SUBQUERY_EXPR:      os << "SUBQUERY_EXPR"; break;
         case ASTNode::Type::COLUMN_DEF:         os << "COLUMN_DEF"; break;
         case ASTNode::Type::TABLE_REF:          os << "TABLE_REF"; break;
         case ASTNode::Type::COLUMN_REF:         os << "COLUMN_REF"; break;
@@ -251,4 +261,4 @@ inline std::ostream& operator<<(std::ostream& os, const ASTNode::Type& type) {
     return os;
 }
 
-}
+}  // namespace query_engine
