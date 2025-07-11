@@ -23,7 +23,6 @@ namespace LogHandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -39,7 +38,6 @@ namespace LogHandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -60,7 +58,6 @@ namespace LogHandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
 
@@ -75,7 +72,6 @@ namespace LogHandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -96,7 +92,6 @@ namespace LogHandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -110,7 +105,6 @@ namespace LogHandler {
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }

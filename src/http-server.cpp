@@ -1,5 +1,4 @@
 #include <crow.h>
-#include<crow/middlewares/cors.h>
 #include<cpr/cpr.h>
 #include<string>
 //#include<vector>
@@ -58,7 +57,7 @@ void HttpServer::setupRoutes() {
            return TableHandler::makeQuery(cur_db, req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
     CROW_ROUTE(app, "/DB/query/history/delete").methods(crow::HTTPMethod::Post)

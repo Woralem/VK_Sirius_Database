@@ -62,7 +62,6 @@ namespace TableHandler{
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -99,7 +98,6 @@ namespace TableHandler{
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
         res.body = db_res.text;
         return res;
     }
@@ -159,10 +157,13 @@ namespace TableHandler{
         //установка заголовков
         for (const auto& [key, value] : db_res.header) {
             res.add_header(key, value);
+            res.body=db_res.text;
         }
-        res.add_header("Access-Control-Allow-Origin", "*");
+        /*
         res.add_header("Content-Type", "application/json");
-        res.body = db_res.text;
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body = db_req.dump();
+        res.code = 200;*/
         return res;
     }
     crow::response table(const std::string& cur_db, const std::string& req) {
