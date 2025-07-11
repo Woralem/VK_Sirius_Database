@@ -567,28 +567,32 @@ bool QueryExecutor::evaluatePredicate(const ASTNode* expr, const nlohmann::json&
                 }
 
                 for (const auto& value : subqueryValues) {
-                    bool match = std::visit([&leftValue](const auto& v) -> bool {
-                        return std::visit([&v](const auto& lv) -> bool {
-                            using T1 = std::decay_t<decltype(v)>;
-                            using T2 = std::decay_t<decltype(lv)>;
+                    bool match = false;
 
-                            if constexpr (std::is_same_v<T1, std::monostate> ||
-                                         std::is_same_v<T2, std::monostate>) {
-                                return false;
-                            } else if constexpr (std::is_same_v<T1, T2>) {
-                                return v == lv;
-                            } else if constexpr ((std::is_same_v<T1, int64_t> && std::is_same_v<T2, double>) ||
-                                               (std::is_same_v<T1, double> && std::is_same_v<T2, int64_t>)) {
-                                if constexpr (std::is_same_v<T1, int64_t>) {
-                                    return static_cast<double>(v) == lv;
-                                } else {
-                                    return v == static_cast<double>(lv);
-                                }
-                            } else {
-                                return false;
-                            }
-                        }, leftValue);
-                    }, value);
+                    if (std::holds_alternative<std::monostate>(leftValue) ||
+                        std::holds_alternative<std::monostate>(value)) {
+                        continue;
+                    }
+                    if (leftValue.index() == value.index()) {
+                        match = (leftValue == value);
+                    }
+                    else if ((std::holds_alternative<int64_t>(leftValue) && std::holds_alternative<double>(value)) ||
+                             (std::holds_alternative<double>(leftValue) && std::holds_alternative<int64_t>(value))) {
+                        double left_as_double, right_as_double;
+
+                        if (std::holds_alternative<int64_t>(leftValue)) {
+                            left_as_double = static_cast<double>(std::get<int64_t>(leftValue));
+                        } else {
+                            left_as_double = std::get<double>(leftValue);
+                        }
+                        if (std::holds_alternative<int64_t>(value)) {
+                            right_as_double = static_cast<double>(std::get<int64_t>(value));
+                        } else {
+                            right_as_double = std::get<double>(value);
+                        }
+
+                        match = (left_as_double == right_as_double);
+                    }
 
                     if (match) {
                         return true;

@@ -1,0 +1,14 @@
+build/
+cmake-build*/
+out/
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.git/
+.gitignore
+*.log
+logs/
