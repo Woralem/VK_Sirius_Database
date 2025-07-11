@@ -174,7 +174,7 @@ namespace TableHandler{
                 {"message", "Request body must contain 'type' field"}
             });
         }
-        if (json_request.contains("data") && json_request["data"].is_string()) {
+        if (!json_request.contains("data")) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'data' field"}
