@@ -19,6 +19,7 @@ namespace JsonHandler {
         res.add_header("Access-Control-Allow-Origin", "*");
         res.add_header("Access-Control-Allow-Headers", "Content-Type");
         res.add_header("Access-Control-Allow-Methods", methods);
+        res.add_header("Access-Control-Max-Age'", "86400");
         res.code = 204;
         return res;
     }

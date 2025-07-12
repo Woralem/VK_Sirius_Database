@@ -24,11 +24,9 @@ namespace DBhandler {
             cpr::Header{{"Content-Type", "application/json"}});
         CROW_LOG_INFO << "Created DB";
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response renameDB(std::string& db_name, json& json_request) {
@@ -46,11 +44,9 @@ namespace DBhandler {
             cpr::Body{json_request.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response removeDB(std::string& db_name) {
@@ -61,11 +57,9 @@ namespace DBhandler {
             cpr::Header{{"Content-Type", "application/json"}});
         db_name = "default";
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response listDB() {
@@ -73,10 +67,9 @@ namespace DBhandler {
         cpr::Response db_res = cpr::Get(
                 cpr::Url{"http://localhost:8080/api/db/list"});
         res.code = db_res.status_code;
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response DB(std:: string& cur_db, const std::string& req) {

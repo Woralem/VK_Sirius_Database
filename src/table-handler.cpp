@@ -59,10 +59,9 @@ namespace TableHandler{
         cpr::Body{db_req.dump()},
         cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response retypeColumn(const std::string& cur_db, const json& json_request) {
@@ -95,10 +94,9 @@ namespace TableHandler{
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response renameColumn(const std::string& cur_db, const json& json_request) {
@@ -131,10 +129,9 @@ namespace TableHandler{
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response makeQuery(const std::string& cur_db, const std::string& req) {
@@ -155,10 +152,9 @@ namespace TableHandler{
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
         //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-            res.body=db_res.text;
-        }
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         /*
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");

@@ -19,11 +19,9 @@ namespace LogHandler {
             });
 
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response getErrors(const std::string& cur_db) {
@@ -34,11 +32,9 @@ namespace LogHandler {
                 {"success", "false"}
             });
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response deleteQuery(const std::string& cur_db, const std::string& req) {
@@ -54,11 +50,9 @@ namespace LogHandler {
         cpr::Response db_res = cpr::Delete(
             cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", id)});
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
 
     }
@@ -68,11 +62,9 @@ namespace LogHandler {
             cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
             cpr::Parameters{{"success", "true"}});
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response deleteError(const std::string& cur_db, const std::string& req) {
@@ -88,11 +80,9 @@ namespace LogHandler {
         cpr::Response db_res = cpr::Delete(
             cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", id)});
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
     crow::response deleteErrors(const std::string& cur_db) {
@@ -101,11 +91,9 @@ namespace LogHandler {
             cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
             cpr::Parameters{{"success", "false"}});
         res.code = db_res.status_code;
-        //установка заголовков
-        for (const auto& [key, value] : db_res.header) {
-            res.add_header(key, value);
-        }
-        res.body = db_res.text;
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
         return res;
     }
 };
