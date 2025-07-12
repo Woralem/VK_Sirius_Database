@@ -55,7 +55,7 @@ namespace TableHandler{
         db_req["database"] = db_name;
         db_req["query"] = sql_query;
         cpr::Response db_res = cpr::Post(
-        cpr::Url{"http://localhost:8080/api/query"},
+        cpr::Url{"http://database_server:8080/api/query"},
         cpr::Body{db_req.dump()},
         cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
@@ -90,7 +90,7 @@ namespace TableHandler{
             (std::string)json_request["column_name"].get<std::string>() + " TYPE " +
                 (std::string)json_request["new_type"].get<std::string>() + ";";
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/query"},
+            cpr::Url{"http://database_server:8080/api/query"},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
@@ -125,7 +125,7 @@ namespace TableHandler{
         +" RENAME COLUMN " +json_request["old_column_name"].get<std::string>() + " TO " +
                 json_request["new_column_name"].get<std::string>() + ";";
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/query"},
+            cpr::Url{"http://database_server:8080/api/query"},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
@@ -147,7 +147,7 @@ namespace TableHandler{
         db_req["database"] = cur_db;
         db_req["query"] = json_request["query"].get<std::string>();
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/query"},
+            cpr::Url{"http://database_server:8080/api/query"},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;

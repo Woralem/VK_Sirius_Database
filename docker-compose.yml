@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  database_server:
+    image: database_server:latest  # Используем готовый образ
+    ports:
+      - "8080:8080"  # Пробрасываем порт 8080 на хост
+    networks:
+      - my_network  # Подключаем к сети
+
+  api_server:
+    image: api_server:latest  # Используем готовый образ
+    ports:
+      - "8090:8090"  # Пробрасываем порт 8090 на хост
+    depends_on:
+      - database_server  # Зависимость от database_server
+    networks:
+      - my_network  # Подключаем к той же сети
+
+networks:
+  my_network:  # Создаём общую сеть
+    driver: bridge

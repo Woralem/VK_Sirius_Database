@@ -22,7 +22,7 @@ HttpServer::~HttpServer() {
 void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/")
     ([](){
-        return "Database Server is running! Use POST /api/query to send queries.";
+        return "Database Server is running! Use POST /db/query to send queries.";
     });
     CROW_ROUTE(app, "/changeDB").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {

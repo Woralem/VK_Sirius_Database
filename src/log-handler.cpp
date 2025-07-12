@@ -13,7 +13,7 @@ namespace LogHandler {
         crow::response res;
         json db_request;
         cpr::Response db_res = cpr::Get(
-            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
             cpr::Parameters{
                 {"success", "true"}
             });
@@ -27,7 +27,7 @@ namespace LogHandler {
     crow::response getErrors(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Get(
-            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
             cpr::Parameters{
                 {"success", "false"}
             });
@@ -48,7 +48,7 @@ namespace LogHandler {
         }
         std::string id = json_request["id"].get<std::string>();
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", id)});
+            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", id)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -59,7 +59,7 @@ namespace LogHandler {
     crow::response deleteQueries(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
             cpr::Parameters{{"success", "true"}});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
@@ -78,7 +78,7 @@ namespace LogHandler {
         }
         std::string id = json_request["id"].get<std::string>();
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", id)});
+            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", id)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -88,7 +88,7 @@ namespace LogHandler {
     crow::response deleteErrors(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://localhost:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
             cpr::Parameters{{"success", "false"}});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");

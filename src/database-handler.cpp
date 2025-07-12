@@ -19,7 +19,7 @@ namespace DBhandler {
         }
 
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/db/create"},
+            cpr::Url{"http://database_server:8080/api/db/create"},
             cpr::Body{json_request.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         CROW_LOG_INFO << "Created DB";
@@ -40,7 +40,7 @@ namespace DBhandler {
         json_request["oldName"] = db_name;
         db_name = json_request["newName"].get<std::string>();
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/db/rename"},
+            cpr::Url{"http://database_server:8080/api/db/rename"},
             cpr::Body{json_request.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         res.code = db_res.status_code;
@@ -52,7 +52,7 @@ namespace DBhandler {
     crow::response removeDB(std::string& db_name) {
         crow::response res;
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/db/delete"},
+            cpr::Url{"http://database_server:8080/api/db/delete"},
             cpr::Body{json{{"database", db_name}}.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
         db_name = "default";
@@ -65,7 +65,7 @@ namespace DBhandler {
     crow::response listDB() {
         crow::response res;
         cpr::Response db_res = cpr::Get(
-                cpr::Url{"http://localhost:8080/api/db/list"});
+                cpr::Url{"http://database_server:8080/api/db/list"});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -112,7 +112,7 @@ namespace DBhandler {
         cur_db = json_request["db_name"].get<std::string>();
         db_req["to"] = cur_db;
         cpr::Response db_res = cpr::Post(
-            cpr::Url{"http://localhost:8080/api/db/switch}"},
+            cpr::Url{"http://database_server:8080/api/db/switch}"},
             cpr::Body{db_req.dump()});
         cur_db = json_request["db_name"].get<std::string>();
         return JsonHandler::createJsonResponse(200, json{
