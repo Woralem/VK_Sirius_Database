@@ -2,11 +2,9 @@
 #include <string>
 #include <unordered_map>
 #include<crow.h>
-#include <nlohmann/json.hpp>
 
-using json = nlohmann::json;
 class WindowManager {
-std::unordered_map<std::string, json> manager;
+std::unordered_map<std::string, std::string> manager;
 std::string cur_window = "";
 public:
     WindowManager() {}

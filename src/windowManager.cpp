@@ -87,7 +87,7 @@ crow::response WindowManager::add(const std::string& req) {
                 {"message", "Request body must contain 'id' field"}
             });
     }
-    if (!json_request.contains("value")) {
+    if (!json_request.contains("value") || !json_request["value"].is_string()) {
         return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'value' field"}
@@ -100,7 +100,7 @@ crow::response WindowManager::add(const std::string& req) {
             {"error", ("id: " + id + " is already in use: ")}
             });
     }
-    WindowManager::manager[id] = json_request["value"];
+    WindowManager::manager[id] = json_request["value"].get<std::string>();
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
     });
@@ -115,7 +115,7 @@ crow::response WindowManager::update (const std::string& req) {
                 {"message", "Request body must contain 'id' field"}
             });
     }
-    if (!json_request.contains("value")) {
+    if (!json_request.contains("value") || !json_request["value"].is_string()) {
         return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'value' field"}
@@ -128,7 +128,7 @@ crow::response WindowManager::update (const std::string& req) {
             {"error", ("Unknown id: " + id)}
             });
     }
-    WindowManager::manager[id] = json_request["value"];
+    WindowManager::manager[id] = json_request["value"].get<std::string>();
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
     });
@@ -175,6 +175,12 @@ crow::response WindowManager::getList () {
 
 //получить информацию о текущем окне
 crow::response WindowManager::getCurrent() {
+    if (cur_window == "") {
+        return JsonHandler::createJsonResponse(400, json{
+            {"status", "error"},
+            {"error", "There are no active window"}
+        });
+    }
     return JsonHandler::createJsonResponse(200, json{
             {"status", "success"},
             {"id", WindowManager::cur_window },
@@ -204,7 +210,7 @@ crow::response WindowManager:: updateCurrent(const std::string& req) {
             {"error", ("Internal error with cur_window")}
             });
     }
-    WindowManager::manager[id] = json_request["value"];
+    WindowManager::manager[id] = json_request["value"].get<std::string>();
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
     });
