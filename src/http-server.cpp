@@ -78,6 +78,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Получить пару по id (id окна, содержимое окна)
     CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -87,6 +89,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Удалить окно по id
     CROW_ROUTE(app, "/remove").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -96,6 +100,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Добавить окно
     CROW_ROUTE(app, "/add").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -105,6 +111,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Обновить содержимое окна по id
     CROW_ROUTE(app, "/update").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -114,6 +122,29 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Сменить окно
+    CROW_ROUTE(app, "/change").methods(crow::HTTPMethod::Post)//сменить окно
+    ([&](const crow::request& req) {
+        try {
+            return wm.changeWindow(req.body);
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+
+    //Обновить текущее окно
+    CROW_ROUTE(app, "/update/current").methods(crow::HTTPMethod::Post)//сменить окно
+    ([&](const crow::request& req) {
+        try {
+            return wm.updateCurrent(req.body);
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+
     CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
@@ -168,7 +199,9 @@ void HttpServer::setupRoutes() {
            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
-    CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Get)
+
+    ///Получить все пары ключ-значение json -ом (для окон)
+    CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Get)//Получить все пары ключ-значение json строкой
     ([&]() {
         try {
            return wm.get();
@@ -177,6 +210,8 @@ void HttpServer::setupRoutes() {
            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Удалить все окна
     CROW_ROUTE(app, "/remove").methods(crow::HTTPMethod::Get)
    ([&]() {
        try {
@@ -186,10 +221,23 @@ void HttpServer::setupRoutes() {
           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
        }
    });
+
+    //Получить список id существующих окон
     CROW_ROUTE(app, "/get/list").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
            return wm.getList();
+        }
+        catch (const std::exception& e) {
+           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+
+    //Получить информацию о текущем окне
+    CROW_ROUTE(app, "/get/current").methods(crow::HTTPMethod::Get)//получение содержимого активного окна
+    ([&]() {
+        try {
+           return wm.getCurrent();
         }
         catch (const std::exception& e) {
            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
