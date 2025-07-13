@@ -73,7 +73,8 @@ crow::response WindowManager::remove(const std::string& req) {
         cur_window = "";
     }
     return JsonHandler::createJsonResponse(200, json{
-        {"status", "success"}
+        {"status", "success"},
+        {"currentWindow", cur_window}
     });
 }
 
