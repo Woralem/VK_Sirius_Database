@@ -38,13 +38,13 @@ namespace LogHandler {
     crow::response deleteQuery(const std::string& cur_db, const std::string& req) {
         crow::response res;
         json json_request = json::parse(req);
-        if (!json_request.contains("id") || !json_request["id"].is_number()) {
+        if (!json_request.contains("id")) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'id' field"}
             });
         }
-        int id = json_request["id"].get<int>();
+        int id = json_request["id"];
         cpr::Response db_res = cpr::Delete(
             cpr::Url{std::format("{}/api/logs/database/{}", HttpServer::getServerURL(), id)});
         res.code = db_res.status_code;
@@ -68,13 +68,13 @@ namespace LogHandler {
     crow::response deleteError(const std::string& cur_db, const std::string& req) {
         crow::response res;
         json json_request = json::parse(req);
-        if (!json_request.contains("id") || !json_request["id"].is_number()) {
+        if (!json_request.contains("id")) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'id' field"}
             });
         }
-        int id = json_request["id"].get<int>();
+        int id = json_request["id"];
         cpr::Response db_res = cpr::Delete(
             cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), id)});
         res.code = db_res.status_code;

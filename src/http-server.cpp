@@ -155,7 +155,7 @@ void HttpServer::setupRoutes() {
         }
     });
 
-    //изменить на упрощенное
+
     CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
@@ -165,7 +165,7 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
-    //надо всё
+
     CROW_ROUTE(app, "/DB/query/errors").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
