@@ -12,7 +12,7 @@
 
 HttpServer::HttpServer() {
     cur_db = "default";
-    std::cout << "HTTP Server created." << std::endl;
+    std::cout << "HTTP Server created!" << std::endl;
 }
 
 HttpServer::~HttpServer() {
@@ -75,7 +75,7 @@ void HttpServer::setupRoutes() {
             return LogHandler::deleteQuery(cur_db, req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -169,7 +169,7 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/query/errors").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
-            return LogHandler::getQueries(cur_db);
+            return LogHandler::getErrors(cur_db);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
@@ -181,7 +181,7 @@ void HttpServer::setupRoutes() {
             return LogHandler::deleteQueries(cur_db);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
     CROW_ROUTE(app, "/DB/query/errors/delete").methods(crow::HTTPMethod::Get)
