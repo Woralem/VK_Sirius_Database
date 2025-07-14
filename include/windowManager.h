@@ -7,7 +7,7 @@ class WindowManager {
 std::unordered_map<std::string, std::string> manager;
 std::string cur_window = "File_1";
 public:
-    WindowManager() {}
+    WindowManager();
     ~WindowManager() {}
     crow::response get();//Получить все пары ключ-значение json строкой
     crow::response get(const std::string& req);//Получить пару по id

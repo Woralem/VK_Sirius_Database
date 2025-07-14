@@ -159,6 +159,7 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
+            CROW_LOG_INFO<<"query history was getted";
             return LogHandler::getQueries(cur_db);
         }
         catch (const std::exception& e) {

@@ -20,6 +20,7 @@ namespace LogHandler {
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
         res.body=db_res.text;
+        CROW_LOG_INFO<<"request was send to DATABASE: "<<res.body << "\n with code: " << res.code;
         return res;
     }
     crow::response getErrors(const std::string& cur_db) {
@@ -46,7 +47,7 @@ namespace LogHandler {
         }
         int id = json_request["id"];
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("{}/api/logs/database/{}", HttpServer::getServerURL(), id)});
+            cpr::Url{std::format("{}/api/logs/{}", HttpServer::getServerURL(), id)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -76,7 +77,7 @@ namespace LogHandler {
         }
         int id = json_request["id"];
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), id)});
+            cpr::Url{std::format("{}/api/logs/{}",HttpServer::getServerURL(), id)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");

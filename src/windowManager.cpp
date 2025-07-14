@@ -8,6 +8,10 @@
 
 using json = nlohmann::json;
 
+WindowManager::WindowManager() {
+    manager[cur_window] = "";
+}
+
 //Получить все пары ключ-значение json строкой
 crow::response WindowManager::get() {
     return JsonHandler::createJsonResponse(200, json{
@@ -43,8 +47,10 @@ crow::response WindowManager::get(const std::string& req) {
 
 //Удалить всё
 crow::response WindowManager::remove() {
+    std::string tmp;
     manager.clear();
-    cur_window = "";
+    cur_window = "File_1";
+    manager[cur_window] = tmp;
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"}
     });
@@ -60,7 +66,7 @@ crow::response WindowManager::remove(const std::string& req) {
             });
     }
     std::string id = json_request["id"].get<std::string>();
-    if (!WindowManager::manager.contains(id)) {
+    if (!WindowManager::manager.contains(id) || id == "File_1") {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("Unknown id: " + id)}
