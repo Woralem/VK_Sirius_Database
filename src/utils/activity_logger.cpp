@@ -286,7 +286,7 @@ nlohmann::json ActivityLogger::getLogById(size_t id) const {
     if (it != entries.end()) {
         nlohmann::json jsonEntry = {
             {"id", it->id},
-            {"timestamp", formatTimestamp(it->timestamp)},
+            {"timestamp", formatTimestampShort(it->timestamp)},
             {"action", actionTypeToString(it->action)},
             {"database", it->database},
             {"details", it->details},
@@ -385,7 +385,7 @@ nlohmann::json ActivityLogger::getLogsByDatabase(const std::string& database, si
 
         nlohmann::json jsonEntry = {
             {"id", entry.id},
-            {"timestamp", formatTimestamp(entry.timestamp)},
+            {"timestamp", formatTimestampShort(entry.timestamp)},
             {"action", actionTypeToString(entry.action)},
             {"database", entry.database},
             {"details", entry.details},
@@ -443,7 +443,7 @@ nlohmann::json ActivityLogger::getLogsAsJson(size_t limit, size_t offset, std::o
 
         nlohmann::json jsonEntry = {
             {"id", entry.id},
-            {"timestamp", formatTimestamp(entry.timestamp)},
+            {"timestamp", formatTimestampShort(entry.timestamp)},
             {"action", actionTypeToString(entry.action)},
             {"database", entry.database},
             {"details", entry.details},
