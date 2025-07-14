@@ -81,19 +81,14 @@ crow::response WindowManager::remove(const std::string& req) {
 //Добавить окно
 crow::response WindowManager::add(const std::string& req) {
     json json_request = json::parse(req);
-    if (!json_request.contains("id") || !json_request["id"].is_string()) {
-        return JsonHandler::createJsonResponse(400, json{
-                {"status", "error"},
-                {"message", "Request body must contain 'id' field"}
-            });
-    }
     if (!json_request.contains("value") || !json_request["value"].is_string()) {
         return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'value' field"}
             });
     }
-    std::string id = json_request["id"].get<std::string>();
+    std::string id = WindowManager::generate_next();
+    WindowManager::cur_window = id;
     if (WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -214,4 +209,9 @@ crow::response WindowManager:: updateCurrent(const std::string& req) {
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
     });
+}
+
+std::string WindowManager::generate_next() {
+    WindowManager::max_id += 1;
+    return std::format("File_{}", WindowManager::max_id);
 }

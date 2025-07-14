@@ -6,6 +6,10 @@
 
 class HttpServer {
 public:
+    static const std::string& getServerURL() {
+        static const std::string instance = "http://database_server:8080";
+        return instance;
+    }
     HttpServer();
     ~HttpServer();
     void setupRoutes();

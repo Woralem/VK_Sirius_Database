@@ -15,10 +15,10 @@ namespace DBhandler {
         if (request == "RENAME") { return DB_POST::RENAME; }
         return DB_POST::ERR;
     }
-    crow::response createDB(const json& req);
-    crow::response removeDB(std::string& name);
-    crow::response renameDB(std::string& name, json& req);
+    crow::response createDB(std::string& cur_db, const json& json_request);
+    crow::response removeDB(std::string& cur_db, const std::string& req);//удаление по id
+    crow::response renameDB(std::string& cur_db, const json& json_request);//переименновать текущую
     crow::response listDB();
-    crow::response DB(std::string& db_name, const std::string& req);
-    crow::response changeDB(std::string& db_name, const std::string& req);
+    crow::response DB(std::string& cur_db, const std::string& req);
+    crow::response changeDB(std::string& cur_db, const std::string& req);
 };

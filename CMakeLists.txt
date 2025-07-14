@@ -52,14 +52,20 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/libcpr/cpr.git
         GIT_TAG 1.10.5
 )
+FetchContent_Declare(
+        Sodium
+        GIT_REPOSITORY https://github.com/robinlinden/libsodium-cmake.git
+        GIT_TAG e5b985ad0dd235d8c4307ea3a385b45e76c74c6a
+)
 
 # Настройка параметров зависимостей
 set(ASIO_STANDALONE ON CACHE BOOL "" FORCE)
 set(CROW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(CROW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(CROW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(SODIUM_DISABLE_TESTS ON)
 
-FetchContent_MakeAvailable(asio nlohmann_json crow cpr)
+FetchContent_MakeAvailable(asio nlohmann_json crow cpr Sodium)
 
 # Настройка include директорий
 target_include_directories(VK_Database_API_Layer
@@ -76,6 +82,7 @@ target_link_libraries(VK_Database_API_Layer
         nlohmann_json::nlohmann_json
         Crow::Crow
         cpr::cpr
+        sodium
 )
 
 # Платформо-специфичные настройки

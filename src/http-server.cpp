@@ -22,8 +22,10 @@ HttpServer::~HttpServer() {
 void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/")
     ([](){
-        return "Database Server is running! Use POST /db/query to send queries.";
+        return "Database Server is running! Use POST /DB/query to send queries.";
     });
+
+    //Сменить текущую БД
     CROW_ROUTE(app, "/changeDB").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -33,6 +35,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Взаимодействие с БД через UI
     CROW_ROUTE(app, "/DB").methods(crow::HTTPMethod::Post)
     ([&] (const crow::request& req) {
         try{
@@ -42,6 +46,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
     }
 });
+
+    //Взаимодействие с таблицой через UI
     CROW_ROUTE(app, "/DB/Table").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -51,6 +57,8 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //SQL-запрос
     CROW_ROUTE(app, "/DB/query").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -60,6 +68,7 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
+
     CROW_ROUTE(app, "/DB/query/history/delete").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -69,6 +78,7 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
     CROW_ROUTE(app, "/DB/query/errors/delete").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
@@ -145,6 +155,7 @@ void HttpServer::setupRoutes() {
         }
     });
 
+    //изменить на упрощенное
     CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
@@ -154,6 +165,7 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+    //надо всё
     CROW_ROUTE(app, "/DB/query/errors").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
@@ -181,15 +193,19 @@ void HttpServer::setupRoutes() {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
-    CROW_ROUTE(app, "/DB/remove").methods(crow::HTTPMethod::Get)
-    ([&]() {
+
+    //Удалить бд по id
+    CROW_ROUTE(app, "/DB/remove").methods(crow::HTTPMethod::Delete)
+    ([&](const crow::request& req) {
         try {
-            return DBhandler::removeDB(cur_db);
+            return DBhandler::removeDB(cur_db, req.body);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+    //Получить список названий существующих бд
     CROW_ROUTE(app, "/DB/list").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
@@ -295,7 +311,7 @@ void HttpServer::setupCorsRoutes() {
     CROW_ROUTE(app, "/DB/remove")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "GET, OPTIONS");
+        return JsonHandler::handleCors(req, "DELETE, OPTIONS");
     });
     CROW_ROUTE(app, "/DB/list")
     .methods(crow::HTTPMethod::Options)

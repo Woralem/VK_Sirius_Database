@@ -5,6 +5,8 @@
 #include<nlohmann/json.hpp>
 
 #include "log-handler.h"
+
+#include "http-server.h"
 #include "json-handler.h"
 
 namespace LogHandler {
@@ -13,11 +15,7 @@ namespace LogHandler {
         crow::response res;
         json db_request;
         cpr::Response db_res = cpr::Get(
-            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
-            cpr::Parameters{
-                {"success", "true"}
-            });
-
+            cpr::Url{std::format("{}/api/history", HttpServer::getServerURL())});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -27,7 +25,7 @@ namespace LogHandler {
     crow::response getErrors(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Get(
-            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), cur_db)},
             cpr::Parameters{
                 {"success", "false"}
             });
@@ -40,15 +38,15 @@ namespace LogHandler {
     crow::response deleteQuery(const std::string& cur_db, const std::string& req) {
         crow::response res;
         json json_request = json::parse(req);
-        if (!json_request.contains("id") || !json_request["id"].is_string()) {
+        if (!json_request.contains("id") || !json_request["id"].is_number()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'id' field"}
             });
         }
-        std::string id = json_request["id"].get<std::string>();
+        int id = json_request["id"].get<int>();
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", id)});
+            cpr::Url{std::format("{}/api/logs/database/{}", HttpServer::getServerURL(), id)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -59,7 +57,7 @@ namespace LogHandler {
     crow::response deleteQueries(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), cur_db)},
             cpr::Parameters{{"success", "true"}});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
@@ -70,15 +68,15 @@ namespace LogHandler {
     crow::response deleteError(const std::string& cur_db, const std::string& req) {
         crow::response res;
         json json_request = json::parse(req);
-        if (!json_request.contains("id") || !json_request["id"].is_string()) {
+        if (!json_request.contains("id") || !json_request["id"].is_number()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'id' field"}
             });
         }
-        std::string id = json_request["id"].get<std::string>();
+        int id = json_request["id"].get<int>();
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", id)});
+            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), id)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
@@ -88,7 +86,7 @@ namespace LogHandler {
     crow::response deleteErrors(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("http://database_server:8080/api/logs/database/{}", cur_db)},
+            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), cur_db)},
             cpr::Parameters{{"success", "false"}});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
