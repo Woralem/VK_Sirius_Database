@@ -5,6 +5,7 @@
 #include "query_engine/executor.h"
 #include "utils/activity_logger.h"
 #include <format>
+#include <sstream>
 
 using json = nlohmann::json;
 
@@ -26,6 +27,238 @@ bool JsonHandler::validateDatabaseName(const std::string& name) {
     return std::ranges::all_of(name, [](char c) {
         return std::isalnum(c) || c == '_';
     });
+}
+
+bool JsonHandler::isSelectQuery(const std::string& query) {
+    std::string upperQuery = query;
+    std::transform(upperQuery.begin(), upperQuery.end(), upperQuery.begin(), ::toupper);
+
+    auto firstNonSpace = upperQuery.find_first_not_of(" \t\r\n");
+    if (firstNonSpace != std::string::npos) {
+        upperQuery = upperQuery.substr(firstNonSpace);
+    }
+
+    auto lastNonSpace = upperQuery.find_last_not_of(" \t\r\n;");
+    if (lastNonSpace != std::string::npos) {
+        upperQuery = upperQuery.substr(0, lastNonSpace + 1);
+    }
+
+    return upperQuery.starts_with("SELECT") ||
+           upperQuery == "SHOW LOGS" ||
+           upperQuery == "SELECT * FROM LOGS";
+}
+
+
+crow::response JsonHandler::executeSingleQuery(const std::string& query_str,
+                                              const std::string& database,
+                                              std::shared_ptr<DatabaseManager> dbManager) {
+    std::string upperQuery = query_str;
+    std::transform(upperQuery.begin(), upperQuery.end(), upperQuery.begin(), ::toupper);
+
+    auto firstNonSpace = upperQuery.find_first_not_of(" \t\r\n");
+    auto lastNonSpace = upperQuery.find_last_not_of(" \t\r\n");
+    if (firstNonSpace != std::string::npos && lastNonSpace != std::string::npos) {
+        upperQuery = upperQuery.substr(firstNonSpace, lastNonSpace - firstNonSpace + 1);
+    }
+
+    if (upperQuery == "SHOW LOGS" || upperQuery == "SELECT * FROM LOGS") {
+        auto& logger = ActivityLogger::getInstance();
+        logger.logDatabaseAction(ActivityLogger::ActionType::LOG_VIEWED, database,
+                               "Viewed logs via SQL command");
+        auto result = logger.getLogsAsJson(100, 0);
+        result["isSelect"] = true;
+        return createJsonResponse(200, result);
+    }
+
+    auto executor = dbManager->getExecutor(database);
+    if (!executor) {
+        auto& logger = ActivityLogger::getInstance();
+        logger.logQuery(database, query_str, {}, {}, false,
+                      std::format("Database not found: {}", database));
+
+        return createJsonResponse(404, json{
+            {"status", "error"},
+            {"message", std::format("Database not found: {}", database)},
+            {"isSelect", isSelectQuery(query_str)}
+        });
+    }
+
+    query_engine::Lexer lexer(query_str);
+    auto tokens = lexer.tokenize();
+
+    query_engine::Parser parser(std::span<const query_engine::Token>{tokens});
+    auto ast = parser.parse();
+
+    if (parser.hasError()) {
+        auto& logger = ActivityLogger::getInstance();
+        logger.logQuery(database, query_str, {}, {}, false,
+                      parser.getErrors().empty() ? "Parse error" : parser.getErrors()[0]);
+
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", "SQL Parse Error"},
+            {"errors", parser.getErrors()},
+            {"isSelect", isSelectQuery(query_str)}
+        });
+    }
+
+    if (!ast) {
+        auto& logger = ActivityLogger::getInstance();
+        logger.logQuery(database, query_str, {}, {}, true, "");
+
+        return createJsonResponse(200, json{
+            {"status", "success"},
+            {"message", "Empty query executed successfully."},
+            {"isSelect", false}
+        });
+    }
+
+    json astInfo = {
+        {"type", query_engine::astNodeTypeToString(ast->type)}
+    };
+
+    json result = executor->execute(ast);
+
+    bool isSelect = (ast->type == query_engine::ASTNode::Type::SELECT_STMT);
+    result["isSelect"] = isSelect;
+
+    auto& logger = ActivityLogger::getInstance();
+    logger.logQuery(database, query_str, astInfo, result, true);
+
+    return createJsonResponse(200, result);
+}
+
+crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto body = json::parse(req.body);
+        if (!body.contains("query") || !body["query"].is_string()) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Request body must contain 'query' string field."}
+            });
+        }
+
+        std::string query_str = body["query"];
+        std::string database = body.value("database", "default");
+
+        // Split queries by newline or semicolon
+        std::vector<std::string> queries;
+        std::stringstream ss(query_str);
+        std::string line;
+        std::string current_query;
+
+        while (std::getline(ss, line)) {
+            line.erase(0, line.find_first_not_of(" \t\r\n"));
+            line.erase(line.find_last_not_of(" \t\r\n") + 1);
+
+            if (!line.empty()) {
+                bool endsWithSemicolon = (!line.empty() && line.back() == ';');
+
+                if (!current_query.empty()) {
+                    current_query += " ";
+                }
+                current_query += line;
+
+                if (endsWithSemicolon) {
+                    queries.push_back(current_query);
+                    current_query.clear();
+                }
+            }
+        }
+
+        if (!current_query.empty()) {
+            queries.push_back(current_query);
+        }
+
+        if (queries.size() == 1) {
+            return executeSingleQuery(queries[0], database, dbManager);
+        }
+
+        // Execute multiple queries
+        json results = json::array();
+        int successCount = 0;
+        int totalCount = queries.size();
+
+        for (const auto& single_query : queries) {
+            auto response = executeSingleQuery(single_query, database, dbManager);
+
+            json resultJson;
+            try {
+                resultJson = json::parse(response.body);
+            } catch (...) {
+                resultJson = {
+                    {"status", "error"},
+                    {"message", "Failed to parse response"},
+                    {"isSelect", isSelectQuery(single_query)}
+                };
+            }
+
+            if (resultJson.value("status", "") == "success") {
+                successCount++;
+            }
+
+            results.push_back({
+                {"query", single_query},
+                {"result", resultJson},
+                {"isSelect", isSelectQuery(single_query)}
+            });
+        }
+
+        return createJsonResponse(200, json{
+            {"status", "success"},
+            {"message", std::format("Executed {} queries, {} successful", totalCount, successCount)},
+            {"results", results},
+            {"totalQueries", totalCount},
+            {"successfulQueries", successCount}
+        });
+
+    } catch (const json::parse_error& e) {
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", std::format("Invalid JSON in request body: {}", e.what())}
+        });
+    } catch (const std::exception& e) {
+        auto& logger = ActivityLogger::getInstance();
+        std::string query = "";
+        std::string database = "default";
+
+        try {
+            auto body = json::parse(req.body);
+            query = body.value("query", "");
+            database = body.value("database", "default");
+        } catch (...) {}
+
+        logger.logQuery(database, query, {}, {}, false, e.what());
+
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", std::format("An internal error occurred: {}", e.what())}
+        });
+    }
+}
+
+crow::response JsonHandler::handleGetHistory(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
+    try {
+        auto& logger = ActivityLogger::getInstance();
+
+        size_t limit = 100;
+        size_t offset = 0;
+
+        if (req.url_params.get("limit")) {
+            limit = std::stoul(req.url_params.get("limit"));
+        }
+        if (req.url_params.get("offset")) {
+            offset = std::stoul(req.url_params.get("offset"));
+        }
+
+        return createJsonResponse(200, logger.getHistoryLogs(limit, offset));
+
+    } catch (const std::exception& e) {
+        return createJsonResponse(500, json{
+            {"status", "error"},
+            {"message", e.what()}
+        });
+    }
 }
 
 crow::response JsonHandler::handleListDatabases(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
@@ -169,108 +402,6 @@ crow::response JsonHandler::handleDeleteDatabase(const crow::request& req, std::
         return createJsonResponse(500, json{
             {"status", "error"},
             {"message", std::format("Failed to delete database: {}", e.what())}
-        });
-    }
-}
-
-crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
-    try {
-        auto body = json::parse(req.body);
-        if (!body.contains("query") || !body["query"].is_string()) {
-            return createJsonResponse(400, json{
-                {"status", "error"},
-                {"message", "Request body must contain 'query' string field."}
-            });
-        }
-
-        std::string query_str = body["query"];
-        std::string database = body.value("database", "default");
-
-        // Check for special log commands
-        std::string upperQuery = query_str;
-        std::transform(upperQuery.begin(), upperQuery.end(), upperQuery.begin(), ::toupper);
-
-        if (upperQuery == "SHOW LOGS" || upperQuery == "SELECT * FROM LOGS") {
-            auto& logger = ActivityLogger::getInstance();
-            logger.logDatabaseAction(ActivityLogger::ActionType::LOG_VIEWED, database,
-                                   "Viewed logs via SQL command");
-            return createJsonResponse(200, logger.getLogsAsJson(100, 0));
-        }
-
-        auto executor = dbManager->getExecutor(database);
-        if (!executor) {
-            auto& logger = ActivityLogger::getInstance();
-            logger.logQuery(database, query_str, {}, {}, false,
-                          std::format("Database not found: {}", database));
-
-            return createJsonResponse(404, json{
-                {"status", "error"},
-                {"message", std::format("Database not found: {}", database)}
-            });
-        }
-
-        query_engine::Lexer lexer(query_str);
-        auto tokens = lexer.tokenize();
-
-        query_engine::Parser parser(std::span<const query_engine::Token>{tokens});
-        auto ast = parser.parse();
-
-        if (parser.hasError()) {
-            auto& logger = ActivityLogger::getInstance();
-            logger.logQuery(database, query_str, {}, {}, false,
-                          parser.getErrors().empty() ? "Parse error" : parser.getErrors()[0]);
-
-            return createJsonResponse(400, json{
-                {"status", "error"},
-                {"message", "SQL Parse Error"},
-                {"errors", parser.getErrors()}
-            });
-        }
-
-        if (!ast) {
-            auto& logger = ActivityLogger::getInstance();
-            logger.logQuery(database, query_str, {}, {}, true, "");
-
-            return createJsonResponse(200, json{
-                {"status", "success"},
-                {"message", "Empty query executed successfully."}
-            });
-        }
-
-        // Log AST info
-        json astInfo = {
-            {"type", query_engine::astNodeTypeToString(ast->type)}
-        };
-
-        json result = executor->execute(ast);
-
-        // Log successful query
-        auto& logger = ActivityLogger::getInstance();
-        logger.logQuery(database, query_str, astInfo, result, true);
-
-        return createJsonResponse(200, result);
-
-    } catch (const json::parse_error& e) {
-        return createJsonResponse(400, json{
-            {"status", "error"},
-            {"message", std::format("Invalid JSON in request body: {}", e.what())}
-        });
-    } catch (const std::exception& e) {
-        auto& logger = ActivityLogger::getInstance();
-        std::string query = "";
-        std::string database = "default";
-
-        try {
-            auto body = json::parse(req.body);
-            query = body.value("query", "");
-            database = body.value("database", "default");
-        } catch (...) {}
-
-        logger.logQuery(database, query, {}, {}, false, e.what());
-
-        return createJsonResponse(500, json{
-            {"status", "error"},
-            {"message", std::format("An internal error occurred: {}", e.what())}
         });
     }
 }

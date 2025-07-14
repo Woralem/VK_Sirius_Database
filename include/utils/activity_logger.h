@@ -43,6 +43,7 @@ public:
         nlohmann::json result;
         bool success;
         std::string error;
+        bool isSelect = false;
     };
 
 private:
@@ -59,6 +60,7 @@ private:
 
     std::string actionTypeToString(ActionType type) const;
     std::string formatTimestamp(const std::chrono::system_clock::time_point& tp) const;
+    std::string formatTimestampShort(const std::chrono::system_clock::time_point& tp) const; // New method
     std::string truncateResult(const nlohmann::json& result) const;
     void writeToFile(const LogEntry& entry);
     void rewriteLogFile();
@@ -92,11 +94,11 @@ public:
     nlohmann::json getLogsByDatabase(const std::string& database, size_t limit = 100,
                                     size_t offset = 0, std::optional<bool> successFilter = std::nullopt) const;
 
+    nlohmann::json getHistoryLogs(size_t limit = 100, size_t offset = 0) const;
+
     size_t deleteLogsBySuccess(std::optional<bool> successFilter);
     size_t deleteLogsByDatabase(const std::string& database, std::optional<bool> successFilter = std::nullopt);
-    
     void clearLogs();
     size_t getLogCount() const;
-    
     void setPersistToFile(bool persist, const std::string& filePath = "activity.log");
 };

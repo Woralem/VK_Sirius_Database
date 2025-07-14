@@ -38,6 +38,13 @@ std::string ActivityLogger::formatTimestamp(const std::chrono::system_clock::tim
     return ss.str();
 }
 
+std::string ActivityLogger::formatTimestampShort(const std::chrono::system_clock::time_point& tp) const {
+    auto time_t = std::chrono::system_clock::to_time_t(tp);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&time_t), "%H:%M");
+    return ss.str();
+}
+
 std::string ActivityLogger::truncateResult(const nlohmann::json& result) const {
     std::string resultStr = result.dump();
     if (resultStr.length() > MAX_RESULT_SIZE) {
@@ -54,7 +61,7 @@ void ActivityLogger::rotateLogsIfNeeded() {
 
 void ActivityLogger::writeToFile(const LogEntry& entry) {
     if (!persistToFile) return;
-    
+
     std::ofstream file(logFilePath, std::ios::app);
     if (file.is_open()) {
         nlohmann::json jsonEntry = {
@@ -65,7 +72,8 @@ void ActivityLogger::writeToFile(const LogEntry& entry) {
             {"details", entry.details},
             {"query", entry.query},
             {"success", entry.success},
-            {"error", entry.error}
+            {"error", entry.error},
+            {"isSelect", entry.isSelect}
         };
 
         if (!entry.result.is_null()) {
@@ -90,7 +98,8 @@ void ActivityLogger::rewriteLogFile() {
                 {"details", entry.details},
                 {"query", entry.query},
                 {"success", entry.success},
-                {"error", entry.error}
+                {"error", entry.error},
+                {"isSelect", entry.isSelect}
             };
 
             if (!entry.result.is_null()) {
@@ -115,6 +124,17 @@ void ActivityLogger::logQuery(const std::string& database, const std::string& qu
     entry.query = query;
     entry.success = success;
     entry.error = error;
+
+    bool isSelect = false;
+    if (!parsedAST.is_null() && parsedAST.contains("type")) {
+        std::string astType = parsedAST["type"];
+        isSelect = (astType == "SELECT_STMT" || astType == "SELECT");
+    } else {
+        std::string upperQuery = query;
+        std::transform(upperQuery.begin(), upperQuery.end(), upperQuery.begin(), ::toupper);
+        isSelect = upperQuery.find("SELECT") == 0 || upperQuery == "SHOW LOGS" || upperQuery == "SELECT * FROM LOGS";
+    }
+    entry.isSelect = isSelect;
 
     // Determine action type based on parsed AST
     if (!parsedAST.is_null() && parsedAST.contains("type")) {
@@ -194,6 +214,7 @@ void ActivityLogger::logDatabaseAction(ActionType action, const std::string& dat
     entry.details = details;
     entry.success = success;
     entry.error = error;
+    entry.isSelect = false;
 
     entries.push_back(entry);
     rotateLogsIfNeeded();
@@ -203,6 +224,43 @@ void ActivityLogger::logDatabaseAction(ActionType action, const std::string& dat
 void ActivityLogger::logDatabaseSwitch(const std::string& fromDb, const std::string& toDb) {
     logDatabaseAction(ActionType::DATABASE_SWITCHED, toDb,
                      std::format("Switched from '{}' to '{}'", fromDb, toDb));
+}
+
+nlohmann::json ActivityLogger::getHistoryLogs(size_t limit, size_t offset) const {
+    std::lock_guard<std::mutex> lock(mutex);
+
+    std::vector<const LogEntry*> filteredEntries;
+    for (const auto& entry : entries) {
+        if (!entry.query.empty()) {
+            filteredEntries.push_back(&entry);
+        }
+    }
+
+    nlohmann::json result = nlohmann::json::array();
+
+    size_t start = std::min(offset, filteredEntries.size());
+    size_t end = std::min(start + limit, filteredEntries.size());
+
+    for (size_t i = start; i < end; ++i) {
+        const auto& entry = *filteredEntries[filteredEntries.size() - 1 - i];
+
+        nlohmann::json jsonEntry = {
+            {"id", entry.id},
+            {"timestamp", formatTimestampShort(entry.timestamp)}, // Only HH:MM
+            {"query", entry.query},
+            {"success", entry.success},
+            {"isSelect", entry.isSelect}
+        };
+
+        result.push_back(jsonEntry);
+    }
+
+    return {
+        {"history", result},
+        {"total", filteredEntries.size()},
+        {"offset", offset},
+        {"limit", limit}
+    };
 }
 
 bool ActivityLogger::deleteLogById(size_t id) {
@@ -233,7 +291,8 @@ nlohmann::json ActivityLogger::getLogById(size_t id) const {
             {"database", it->database},
             {"details", it->details},
             {"query", it->query},
-            {"success", it->success}
+            {"success", it->success},
+            {"isSelect", it->isSelect}
         };
 
         if (!it->error.empty()) {
@@ -331,7 +390,8 @@ nlohmann::json ActivityLogger::getLogsByDatabase(const std::string& database, si
             {"database", entry.database},
             {"details", entry.details},
             {"query", entry.query},
-            {"success", entry.success}
+            {"success", entry.success},
+            {"isSelect", entry.isSelect}
         };
 
         if (!entry.error.empty()) {
@@ -345,7 +405,6 @@ nlohmann::json ActivityLogger::getLogsByDatabase(const std::string& database, si
         result.push_back(jsonEntry);
     }
 
-    // Исправление для MSVC - используем nlohmann::json() вместо nullptr
     nlohmann::json responseJson = {
         {"logs", result},
         {"total", filteredEntries.size()},
@@ -389,7 +448,8 @@ nlohmann::json ActivityLogger::getLogsAsJson(size_t limit, size_t offset, std::o
             {"database", entry.database},
             {"details", entry.details},
             {"query", entry.query},
-            {"success", entry.success}
+            {"success", entry.success},
+            {"isSelect", entry.isSelect}
         };
 
         if (!entry.error.empty()) {
@@ -447,6 +507,7 @@ std::string ActivityLogger::getLogsAsText(size_t limit, size_t offset, std::opti
         ss << actionTypeToString(entry.action) << " | ";
         ss << "DB: " << entry.database << " | ";
         ss << (entry.success ? "SUCCESS" : "FAILED");
+        if (entry.isSelect) ss << " | SELECT";
 
         if (!entry.query.empty()) {
             ss << "\nQuery: " << entry.query;
@@ -470,7 +531,7 @@ std::string ActivityLogger::getLogsAsCsv(size_t limit, size_t offset, std::optio
     std::lock_guard<std::mutex> lock(mutex);
 
     std::stringstream ss;
-    ss << "ID,Timestamp,Action,Database,Success,Query,Details,Error\n";
+    ss << "ID,Timestamp,Action,Database,Success,IsSelect,Query,Details,Error\n";
 
     std::vector<const LogEntry*> filteredEntries;
     for (const auto& entry : entries) {
@@ -490,6 +551,7 @@ std::string ActivityLogger::getLogsAsCsv(size_t limit, size_t offset, std::optio
         ss << "\"" << actionTypeToString(entry.action) << "\",";
         ss << "\"" << entry.database << "\",";
         ss << "\"" << (entry.success ? "YES" : "NO") << "\",";
+        ss << "\"" << (entry.isSelect ? "YES" : "NO") << "\",";
 
         std::string escapedQuery = entry.query;
         std::replace(escapedQuery.begin(), escapedQuery.end(), '"', '\'');

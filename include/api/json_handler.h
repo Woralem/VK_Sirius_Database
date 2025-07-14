@@ -25,8 +25,14 @@ public:
     [[nodiscard]] static crow::response handleBulkDeleteLogs(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
     [[nodiscard]] static crow::response handleBulkDeleteLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager);
 
+    [[nodiscard]] static crow::response handleGetHistory(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager);
+
     [[nodiscard]] static crow::response createJsonResponse(int code, const nlohmann::json& body);
 
 private:
     [[nodiscard]] static bool validateDatabaseName(const std::string& name);
+    [[nodiscard]] static bool isSelectQuery(const std::string& query);
+    [[nodiscard]] static crow::response executeSingleQuery(const std::string& query_str,
+                                                          const std::string& database,
+                                                          std::shared_ptr<DatabaseManager> dbManager);
 };

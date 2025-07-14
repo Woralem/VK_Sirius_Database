@@ -98,6 +98,12 @@ void HttpServer::setupRoutes() {
         return JsonHandler::handleDeleteLog(req, id, dbManager);
     });
 
+    CROW_ROUTE(app, "/api/history")
+    .methods(crow::HTTPMethod::Get)
+    ([this](const crow::request& req){
+        return JsonHandler::handleGetHistory(req, dbManager);
+    });
+
     // Database switch logging endpoint
     CROW_ROUTE(app, "/api/db/switch")
     .methods(crow::HTTPMethod::Post)
@@ -188,6 +194,12 @@ void HttpServer::setupCorsRoutes() {
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req, int){
         return JsonHandler::handleCors(req, "GET, DELETE, OPTIONS");
+    });
+
+    CROW_ROUTE(app, "/api/history")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "GET, OPTIONS");
     });
 }
 
