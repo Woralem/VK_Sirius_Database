@@ -344,11 +344,6 @@ void HttpServer::setupCorsRoutes() {
     ([](const crow::request& req){
         return JsonHandler::handleCors(req, "POST, OPTIONS");
     });
-    CROW_ROUTE(app, "/update/current")
-    .methods(crow::HTTPMethod::Options)
-    ([](const crow::request& req){
-        return JsonHandler::handleCors(req, "POST, OPTIONS");
-    });
     CROW_ROUTE(app, "/get/current")
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
