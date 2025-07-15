@@ -78,6 +78,7 @@
         "cstdarg": "cpp",
         "cinttypes": "cpp",
         "filesystem": "cpp",
-        "xhash": "cpp"
+        "xhash": "cpp",
+        "unordered_set": "cpp"
     }
 }

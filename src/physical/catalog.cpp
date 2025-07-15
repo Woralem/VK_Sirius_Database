@@ -1,6 +1,8 @@
 #include "physical/catalog.h"
 #include "storage_engine.h"
 #include "common/bit_utils.h"
+#include "common/encoding.h"
+#include "physical/table.h" // Required to instantiate Table objects
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -11,114 +13,73 @@
 #include <string_view>
 #include <format>
 
-// --- Static Encoding Data ---
-
-// Provides a 6-bit encoding for a specific set of 64 characters.
-// This allows a 16-character table name (16 * 6 = 96 bits) to be packed
-// perfectly into a 12-byte (12 * 8 = 96 bits) key.
-static const std::unordered_map<char, uint8_t> ENCODING_MAP = {
-    {'A', 0}, {'B', 1}, {'C', 2}, {'D', 3}, {'E', 4}, {'F', 5}, {'G', 6}, {'H', 7},
-    {'I', 8}, {'J', 9}, {'K', 10}, {'L', 11}, {'M', 12}, {'N', 13}, {'O', 14}, {'P', 15},
-    {'Q', 16}, {'R', 17}, {'S', 18}, {'T', 19}, {'U', 20}, {'V', 21}, {'W', 22}, {'X', 23},
-    {'Y', 24}, {'Z', 25}, {'a', 26}, {'b', 27}, {'c', 28}, {'d', 29}, {'e', 30}, {'f', 31},
-    {'g', 32}, {'h', 33}, {'i', 34}, {'j', 35}, {'k', 36}, {'l', 37}, {'m', 38}, {'n', 39},
-    {'o', 40}, {'p', 41}, {'q', 42}, {'r', 43}, {'s', 44}, {'t', 45}, {'u', 46}, {'v', 47},
-    {'w', 48}, {'x', 49}, {'y', 50}, {'z', 51}, {'0', 52}, {'1', 53}, {'2', 54}, {'3', 55},
-    {'4', 56}, {'5', 57}, {'6', 58}, {'7', 59}, {'8', 60}, {'9', 61}, {'_', 62}, {'-', 63}
-};
-
-// --- Private Helper Functions ---
-
-// Validates a table name against the character set and length constraints.
-void validateTableName(const std::string& name) {
-    if (name.empty()) {
-        throw std::invalid_argument("Table name cannot be empty.");
-    }
-    if (name.length() > 16) {
-        throw std::invalid_argument("Table name cannot exceed 16 characters.");
-    }
-    if (name.back() == '_') {
-        throw std::invalid_argument("Table name cannot end with '_'.");
-    }
-    if (name.find_first_not_of('-') == std::string::npos) {
-        throw std::invalid_argument("Table name cannot consist only of '-'.");
-    }
-    // Ensures every character in the name can be encoded.
-    for (char c : name) {
-        if (ENCODING_MAP.find(c) == ENCODING_MAP.end()) {
-            throw std::invalid_argument("Table name contains invalid character: " + std::string(1, c));
-        }
-    }
-}
-
-
-// --- Constructor ---
+//================================================================================
+// Constructor & Destructor
+//================================================================================
 
 // Initializes the catalog by setting up file paths, creating directories/files if
-// they don't exist, opening file streams, and loading existing data from disk.
+// they don't exist, opening persistent file streams, and loading existing data from disk.
 Catalog::Catalog(const std::string& db_path)
     : db_path_(db_path),
       manager_db_path_(db_path + "/manager.db"),
       meta_db_path_(db_path + "/meta.mt"),
-      file_manager_()
+      file_manager_(),
+      max_length_name_(65535) // Maximum number of tables (2^16)
 {
     file_manager_.createDirectory(db_path_);
     file_manager_.createFile(manager_db_path_);
     file_manager_.createFile(meta_db_path_);
 
-    // Open file streams for managing table metadata and free links.
-    manager_file_.open(manager_db_path_, std::ios::in | std::ios::out | std::ios::app | std::ios::binary);
+    // Open file streams that will be held for the lifetime of the Catalog.
+    // This provides fast, persistent access to the core metadata files.
+    manager_file_.open(manager_db_path_, std::ios::in | std::ios::out | std::ios::binary);
     meta_file_.open(meta_db_path_, std::ios::in | std::ios::out | std::ios::binary);
+
+    // Set streams to throw exceptions on failure for robust error handling.
     manager_file_.exceptions(std::ios::failbit | std::ios::badbit);
     meta_file_.exceptions(std::ios::failbit | std::ios::badbit);
 
-    if (!manager_file_.is_open()) {
-        throw std::runtime_error("FATAL: Could not open manager.db stream.");
-    }
-    if (!meta_file_.is_open()) {
-        throw std::runtime_error("FATAL: Could not open meta.mt stream.");
-    }
+    if (!manager_file_.is_open()) throw std::runtime_error("FATAL: Could not open manager.db stream.");
+    if (!meta_file_.is_open()) throw std::runtime_error("FATAL: Could not open meta.mt stream.");
+    
+    // Populate the in-memory cache with all existing table records.
     load();
 }
 
-// Destructor ensures file streams are closed, flushing any buffered writes to disk.
+// Destructor ensures persistent file streams are properly closed, flushing any
+// buffered writes to disk.
 Catalog::~Catalog() {
-    if (manager_file_.is_open()) {
-        manager_file_.close();
-    }
-    if (meta_file_.is_open()) {
-        meta_file_.close();
-    }
+    if (manager_file_.is_open()) manager_file_.close();
+    if (meta_file_.is_open()) meta_file_.close();
 }
 
-// --- Public Methods ---
+//================================================================================
+// Public API Methods
+//================================================================================
 
-// Creates a new table, which involves validating the name, generating a unique
-// link (ID), persisting the name-to-link mapping, and creating the physical
-// files for the table's data.
-void Catalog::createTable(const std::string& table_name, const std::vector<ColumnDef>& columns) {
+// Creates a new table, which involves validating the name, generating a unique link (ID),
+// persisting the name-to-link mapping, and delegating to the Table class to create
+// the physical files and column definitions.
+void Catalog::createTable(const std::string& table_name, const std::vector<ColumnDef>& columns, const Options& options) {
     validateTableName(table_name);
-
-    // Encode the human-readable name into a compact 12-byte key for internal use.
     TableNameKey key = stringToKey(table_name);
 
     if (table_links_.count(key)) {
-        throw std::runtime_error(std::format("Table {} already exists.", table_name));
+        throw std::runtime_error(std::format("Table '{}' already exists.", table_name));
     }
 
-    // Get a unique link and persist the new key-link pair.
+    // This performs the logical creation: acquiring a link and writing to manager.db.
     setLink(key);
+    uint16_t link = table_links_.at(key).first;
 
-    uint16_t link = table_links_[key].first;
-
+    // --- Physical File Creation ---
     // The link is used to generate a unique, two-level directory structure.
     // For a link 0xHHLL, the path is db_path/HH/LL.*
-    uint8_t high_byte = (link >> 8); // Corresponds to the directory name.
-    uint8_t low_byte = link & 0xFF;  // Corresponds to the base file name.
+    uint8_t high_byte = (link >> 8);
+    uint8_t low_byte = link & 0xFF;
 
     char dir_name_buf[2];
     char file_name_buf[2];
-
     byte_to_hex_lut(high_byte, dir_name_buf);
     byte_to_hex_lut(low_byte, file_name_buf);
 
@@ -126,69 +87,106 @@ void Catalog::createTable(const std::string& table_name, const std::vector<Colum
     std::string_view file_name_sv(file_name_buf, 2);
 
     std::filesystem::path dir_path = std::filesystem::path(db_path_) / dir_name_sv;
-
-    // The directory is only created for the first file in it (e.g., link 0xHH00).
-    if (low_byte == 0){
+    
+    // The parent directory (e.g., 'HH') is only created for the first file in it.
+    if (low_byte == 0) {
         file_manager_.createDirectory(dir_path);
     }
 
-    std::filesystem::path file_path = dir_path / file_name_sv;
-
-    // Create the physical files for the table.
-    file_path.replace_extension(".col"); // Column data file
-    file_manager_.createFile(file_path);
-
-    file_path.replace_extension(".meta"); // Table metadata file
-    file_manager_.createFile(file_path);
+    // --- Integration Point ---
+    // Instantiate a Table object, which handles its own file creation (.col, .meta, etc.).
+    Table new_table(dir_path, file_name_sv, options);
+    
+    // Use the new Table object to create all the columns.
+    if (!columns.empty()) {
+        new_table.createColumns(columns);
+    }
 }
 
-// Acquires a unique 16-bit link for a new table and persists the mapping.
-void Catalog::setLink(const TableNameKey& key) {
-    uint16_t link;
-
-    meta_file_.clear(); // Clear any error flags on the stream.
-    meta_file_.seekg(0, std::ios::end);
-
-    // The meta.mt file acts as a freelist for recycled links.
-    if (meta_file_.tellg() == 0) {
-        // If the freelist is empty, generate a new link sequentially.
-        link = static_cast<uint16_t>(table_links_.size());
-    } else {
-        // If the freelist is not empty, pop the last available link from it.
-        meta_file_.seekg(-2, std::ios::end);
-        char buffer[2];
-        meta_file_.read(buffer, 2);
-
-        // Truncate the file to remove the link we just read.
-        auto pos = meta_file_.tellg();
-        meta_file_.close();
-        std::filesystem::resize_file(meta_db_path_, static_cast<long long>(pos) - 2);
-        meta_file_.open(meta_db_path_, std::ios::in | std::ios::out | std::ios::binary);
-
-        link = (static_cast<uint8_t>(buffer[1]) << 8) |
-               static_cast<uint8_t>(buffer[0]);
+// Drops a table logically (marking it deleted) and physically (deleting its files).
+void Catalog::dropTable(const std::string& table_name) {
+    validateTableName(table_name);
+    TableNameKey key = stringToKey(table_name);
+    auto it = table_links_.find(key);
+    
+    if (it == table_links_.end()) {
+        throw std::runtime_error(std::format("Table '{}' does not exist.", table_name));
     }
 
-    // Update the in-memory map.
-    // Предполагая, что manager_data_ - это ваш объект std::fstream
-    manager_file_.seekg(0, std::ios::end);
-    std::streampos last_byte_pos = manager_file_.tellg();
-    table_links_[key] = {link, last_byte_pos};
+    try {
+        std::streampos pos = it->second.second;
+        uint16_t link = it->second.first;
 
-    // Append the new record (12-byte key + 2-byte link) to the manager file.
-    manager_file_.write(reinterpret_cast<const char*>(&key), sizeof(TableNameKey));
-    char write_buffer[2];
-    write_buffer[0] = link & 0xFF;          // Little-endian
-    write_buffer[1] = (link >> 8) & 0xFF;
-    manager_file_.write(write_buffer, 2);
+        // 1. Logical delete: Mark record in manager.db with a tombstone (all 0xFF).
+        manager_file_.seekp(pos);
+        std::vector<char> tombstone(sizeof(TableNameKey) + sizeof(uint16_t), 0xFF);
+        manager_file_.write(tombstone.data(), tombstone.size());
+        manager_file_.flush();
 
-    // Ensure the changes are written to disk.
-    manager_file_.flush();
+        // 2. Add the link to the global freelist for recycling.
+        meta_file_.seekp(0, std::ios::end);
+        meta_file_.write(reinterpret_cast<const char*>(&link), sizeof(link));
+        meta_file_.flush();
+
+        // 3. Erase from in-memory map.
+        table_links_.erase(it);
+
+        // 4. Physical delete: Delegate file deletion to the Table class.
+        uint8_t high_byte = (link >> 8), low_byte = link & 0xFF;
+        char dir_name_buf[2], file_name_buf[2];
+        byte_to_hex_lut(high_byte, dir_name_buf);
+        byte_to_hex_lut(low_byte, file_name_buf);
+        std::filesystem::path base_path = std::filesystem::path(db_path_) / std::string_view(dir_name_buf, 2) / std::string_view(file_name_buf, 2);
+        
+        Table::dropTableFiles(base_path);
+
+        std::cout << "Table '" << table_name << "' dropped successfully." << std::endl;
+    } catch (const std::ios_base::failure& e) {
+        throw std::runtime_error(std::format("Disk I/O error while dropping table '{}': {}", table_name, e.what()));
+    }
 }
 
-// Retrieves the link for a given table name from the in-memory map.
+// IN-PLACE, ROBUST, AND SIMPLE renameTable in catalog.cpp
+void Catalog::renameTable(const std::string& old_name, const std::string& new_name) {
+    validateTableName(old_name);
+    validateTableName(new_name);
+
+    TableNameKey old_key = stringToKey(old_name);
+    TableNameKey new_key = stringToKey(new_name);
+
+    auto it = table_links_.find(old_key);
+    if (it == table_links_.end()) {
+        throw std::runtime_error(std::format("Table '{}' not found.", old_name));
+    }
+    if (table_links_.count(new_key)) {
+        throw std::runtime_error(std::format("Table with name '{}' already exists.", new_name));
+    }
+
+    // --- In-Place Update Logic ---
+    // 1. Get the data from the old record.
+    uint16_t link = it->second.first;
+    std::streampos pos = it->second.second;
+
+    // 2. Overwrite the old key with the new key directly in the file.
+    try {
+        manager_file_.clear(); // Clear any error flags
+        manager_file_.seekp(pos);
+        // We only overwrite the key portion (12 bytes), leaving the 2-byte link untouched.
+        manager_file_.write(reinterpret_cast<const char*>(&new_key), sizeof(new_key));
+        manager_file_.flush();
+    } catch (const std::ios_base::failure& e) {
+        throw std::runtime_error(std::format("Disk I/O error renaming table '{}': {}", old_name, e.what()));
+    }
+
+    // 3. Update the in-memory map.
+    table_links_.erase(it);
+    table_links_[new_key] = {link, pos}; // The position has NOT changed.
+
+    std::cout << "Table '" << old_name << "' renamed to '" << new_name << "'.\n";
+}
+
+// Retrieves the link for a given table name from the fast in-memory map.
 bool Catalog::getTableLink(const std::string& table_name, uint16_t& link_out) const {
-    // A quick check to avoid encoding unnecessarily long strings.
     if (table_name.length() > 16) return false;
 
     TableNameKey key = stringToKey(table_name);
@@ -201,111 +199,104 @@ bool Catalog::getTableLink(const std::string& table_name, uint16_t& link_out) co
     return false;
 }
 
+//================================================================================
+// Private Helper Methods
+//================================================================================
 
-// --- Private Methods ---
+// Factory method to create a Table object for an existing table.
+// This is the primary way to get a manipulable Table object from its name.
+std::unique_ptr<Table> Catalog::getTable(const std::string& table_name, const Options& options) {
+    uint16_t link;
+    if (!getTableLink(table_name, link)) {
+        return nullptr;
+    }
+    
+    uint8_t high_byte = (link >> 8), low_byte = link & 0xFF;
+    char dir_name_buf[2], file_name_buf[2];
+    byte_to_hex_lut(high_byte, dir_name_buf);
+    byte_to_hex_lut(low_byte, file_name_buf);
+
+    std::string_view dir_name_sv(dir_name_buf, 2);
+    std::string_view file_name_sv(file_name_buf, 2);
+
+    std::filesystem::path dir_path = std::filesystem::path(db_path_) / dir_name_sv;
+
+    // The options are only used by the Table constructor if its .meta file is new.
+    // For an existing table, this parameter has no effect.
+    return std::make_unique<Table>(dir_path, file_name_sv, options);
+}
 
 // Populates the in-memory `table_links_` map by reading all records
 // from the `manager.db` file upon startup.
 void Catalog::load() {
-    if (!file_manager_.fileExists(manager_db_path_)) {
-        return; // Nothing to load if the file doesn't exist.
-    }
-
-    std::fstream file(manager_db_path_, std::ios::in | std::ios::binary);
+    std::ifstream file(manager_db_path_, std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Could not open manager.db for loading.");
     }
 
-    // Each on-disk record consists of a 12-byte key and a 2-byte link.
     const size_t record_size = sizeof(TableNameKey) + sizeof(uint16_t);
     char buffer[record_size];
 
     while (file.read(buffer, record_size)) {
-        // Ensure a full record was read before processing.
-        if (file.gcount() == record_size) {
-            TableNameKey key;
-            uint16_t link;
-            memcpy(&key, buffer, sizeof(TableNameKey));
-            memcpy(&link, buffer + sizeof(TableNameKey), sizeof(uint16_t));
-            table_links_[key] = {link, file.tellg() - record_size};
+        std::streampos record_pos = file.tellg() - static_cast<std::streamoff>(record_size);
+        
+        TableNameKey key;
+        memcpy(&key, buffer, sizeof(TableNameKey));
+        
+        // --- THIS IS THE KEY FIX ---
+        // Check if the record is a tombstone (all bits set to 1).
+        if (key.part1 == -1ULL && key.part2 == -1U) {
+            continue; // Skip this deleted/invalidated record.
         }
-    }
 
+        uint16_t link;
+        memcpy(&link, buffer + sizeof(TableNameKey), sizeof(uint16_t));
+        table_links_[key] = {link, record_pos};
+    }
+    
     std::cout << "Info: Loaded " << table_links_.size() << " tables from the catalog." << std::endl;
 }
 
-// Encodes a string into a 12-byte key using a custom 6-bit per character scheme.
-TableNameKey Catalog::stringToKey(const std::string& s) const {
-    // The buffer where the packed bits will be stored.
-    std::array<uint8_t, 12> buffer{};
-
-    // Tracks the current bit position (0-95) in the buffer.
-    int current_bit_pos = 0;
-
-    for (char c : s) {
-        // Look up the 6-bit code for the character.
-        uint8_t code = ENCODING_MAP.at(c);
-
-        // Calculate where to start writing the 6 bits.
-        int byte_index = current_bit_pos / 8;
-        int bit_in_byte = current_bit_pos % 8;
-
-        // Write the 6-bit code. It might span two bytes.
-        // `(code << bit_in_byte)` aligns the code with the current bit position.
-        buffer[byte_index] |= (code << bit_in_byte);
-
-        // If the 6 bits crossed a byte boundary (e.g., started at bit 3 or later).
-        if (bit_in_byte > 2) {
-            // Write the remaining part of the code into the next byte.
-            // `(code >> (8 - bit_in_byte))` gets the bits that didn't fit.
-            buffer[byte_index + 1] |= (code >> (8 - bit_in_byte));
-        }
-
-        // Advance the cursor for the next character.
-        current_bit_pos += 6;
+// Acquires a unique 16-bit link for a new table and persists the mapping.
+void Catalog::setLink(const TableNameKey& key) {
+    if (table_links_.size() >= max_length_name_) {
+        throw std::runtime_error("Maximum number of tables for the database has been exceeded.");
     }
 
-    // Reinterpret the raw byte buffer as the final TableNameKey.
-    return *reinterpret_cast<TableNameKey*>(buffer.data());
-}
+    uint16_t link;
+    meta_file_.clear();
+    meta_file_.seekg(0, std::ios::end);
+    std::streampos meta_file_size = meta_file_.tellg();
 
-void Catalog::dropTable(const std::string& table_name) {
-    TableNameKey key = stringToKey(table_name);
+    // The meta.mt file acts as a LIFO freelist for recycled table links.
+    if (meta_file_size == 0) {
+        // If the freelist is empty, generate a new link sequentially.
+        link = static_cast<uint16_t>(table_links_.size());
+    } else {
+        // If the freelist is not empty, pop the last available link from it.
+        meta_file_.seekg(-2, std::ios::end);
+        char buffer[2];
+        meta_file_.read(buffer, 2);
+        
+        // Truncate the file to remove the link we just read. This is a bit complex
+        // as it requires closing and reopening the stream.
+        meta_file_.close();
+        std::filesystem::resize_file(meta_db_path_, static_cast<long long>(meta_file_size) - 2);
+        meta_file_.open(meta_db_path_, std::ios::in | std::ios::out | std::ios::binary);
 
-    auto it = table_links_.find(key);
+        link = (static_cast<uint8_t>(buffer[0]) << 8) | static_cast<uint8_t>(buffer[1]); // Big-endian read
+    }
+
+    manager_file_.clear();
+    manager_file_.seekp(0, std::ios::end);
+    std::streampos new_record_pos = manager_file_.tellg();
     
-    if (it == table_links_.end()) {
-        throw std::runtime_error(std::format("Table {} does not exist.", table_name));
-        return;
-    }
-
-    try {
-        std::streampos pos = it->second.second;
-        std::uint16_t link = it->second.first;
-
-        manager_file_.seekp(pos, std::ios::beg); // Переходим в начало файла
-
-        char write_buffer[sizeof(TableNameKey) + sizeof(uint16_t)];
-        std::fill(write_buffer, write_buffer + sizeof(write_buffer), 0xFF);
-        manager_file_.write(write_buffer, sizeof(write_buffer));
-
-        // Write the link to the meta file for recycling.
-        meta_file_.seekp(0, std::ios::end);
-        char link_buffer[sizeof(link)];
-        link_buffer[0] = link & 0xFF;          // Little-endian
-        link_buffer[1] = (link >> 8) & 0xFF;
-        meta_file_.write(link_buffer, sizeof(link));
-
-        table_links_.erase(key);
-        // TODO: Remove the physical files associated with the table.
-        // This would involve deleting the files in the directory structure
-        // based on the link, which is not implemented here.
-
-        std::cout << "Table " << table_name << " dropped successfully." << std::endl;
-    } catch (const std::ios_base::failure& e) {
-        // Если любая из операций seekp/write не удалась, мы попадаем сюда.
-        // Кэш table_links_ остается нетронутым. Состояние консистентно.
-        // Оборачиваем ошибку ввода-вывода в более понятное сообщение.
-        throw std::runtime_error(std::format("Disk I/O error while dropping table '{}': {}", table_name, e.what()));
-    }
+    // Append the new record (12-byte key + 2-byte link) to the manager file.
+    manager_file_.write(reinterpret_cast<const char*>(&key), sizeof(TableNameKey));
+    char write_buffer[2] = {static_cast<char>(link >> 8), static_cast<char>(link & 0xFF)}; // Big-endian write
+    manager_file_.write(write_buffer, 2);
+    manager_file_.flush();
+    
+    // Update the in-memory map.
+    table_links_[key] = {link, new_record_pos};
 }

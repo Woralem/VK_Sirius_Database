@@ -1,29 +1,40 @@
-#include <iostream>
+// --- FINAL, CORRECTED types.h ---
+#pragma once
+
+#include <string>
+#include <vector>
 #include <array>
 #include <cstdint>
-#include <string>
+#include <utility>
 
-// --- HOW TO ADD A NEW DATA TYPE ---
-//
-// 1.  Define the type in the `DataType` enum below.
-//     - Choose a unique byte code (a value from 0 to 254).
-//     - Follow the convention for the most significant bit (MSB):
-//       - `0b0xxxxxxx` for fixed-size types (e.g., Integer, Date).
-//       - `0b1xxxxxxx` for variable-size types (e.g., VarChar, Blob).
-//
-// 2.  Register the new type in the `CreateTypeLut` factory function.
-//     - Add a new line to map your type's byte code to its enum value:
-//       `lut[static_cast<uint8_t>(DataType::YourNewType)] = DataType::YourNewType;`
-//
-// The `TYPE_LUT` is generated at compile time, so no further changes are needed.
-// ------------------------------------
+// --- Data Structures ---
+// These are common data transfer structures used across the engine.
 
+struct ColumnDef {
+    std::string name;
+    // DataType is forward-declared below, so we use it here.
+    enum class DataType : std::uint8_t; 
+    DataType type;
+    bool primeryKey = false;
+    bool notNull = false;
+};
+
+struct Options {
+    std::vector<std::string> additionalTypes = {};
+    int maxColumnLemgth = 16;
+    std::vector<std::string> additionalChars = {};
+    int maxStringLength = 16; // This likely needs to be an enum or code
+    int gcFrequency = 7; // Frequency of garbage collection in days
+};
+
+struct Value { /*...*/ }; // Can use std::variant
+
+
+// --- DataType Enum Definition ---
 
 // Defines all supported data types, each with a unique byte code.
 // The `std::uint8_t` base ensures a compact, single-byte representation.
-// The most significant bit (MSB) distinguishes between fixed-size (MSB=0)
-// and variable-size (MSB=1) types.
-enum class DataType : std::uint8_t {
+enum class ColumnDef::DataType : std::uint8_t {
     // A sentinel value used for invalid or unrecognized type codes.
     Unknown   = 255,
 
@@ -54,56 +65,53 @@ enum class DataType : std::uint8_t {
     Array     = 0b10000110,
     Json      = 0b10000111,
     JsonB     = 0b10001000,
-    PhoneNumber = 0b10001001, // Custom type
-    EmailAddress = 0b10001010, // Custom type
-    Address = 0b10001011,      // Custom type
-    Telegram = 0b10001100      // Custom type
+    PhoneNumber = 0b10001001,
+    EmailAddress = 0b10001010,
+
+    // Added from your original file
+    Address = 0b10001011,
+    Telegram = 0b10001100
 };
 
-// A `constexpr` factory function that builds a lookup table (LUT) at compile time.
-// This allows for O(1) conversion from a byte code to a `DataType`.
-constexpr std::array<DataType, 256> CreateTypeLut() {
-    std::array<DataType, 256> lut{};
 
-    // Initialize all 256 possible byte values to `Unknown` by default.
-    // This safely handles any byte code that isn't an explicitly defined type.
-    lut.fill(DataType::Unknown);
+// --- Compile-time Lookup Table (LUT) ---
+// This allows for O(1) conversion from a byte code to a DataType.
+// Since these are `constexpr`, they are implicitly `inline` and safe for a header.
 
-    // Map the byte code of each defined type to its corresponding enum value.
-    // The array index is the byte code, providing direct, constant-time lookup.
-    lut[static_cast<std::uint8_t>(DataType::Null)] = DataType::Null;
-    lut[static_cast<std::uint8_t>(DataType::TinyInt)] = DataType::TinyInt;
-    lut[static_cast<std::uint8_t>(DataType::SmallInt)] = DataType::SmallInt;
-    lut[static_cast<std::uint8_t>(DataType::Integer)] = DataType::Integer;
-    lut[static_cast<std::uint8_t>(DataType::BigInt)] = DataType::BigInt;
-    lut[static_cast<std::uint8_t>(DataType::UTinyInt)] = DataType::UTinyInt;
-    lut[static_cast<std::uint8_t>(DataType::USmallInt)] = DataType::USmallInt;
-    lut[static_cast<std::uint8_t>(DataType::UInteger)] = DataType::UInteger;
-    lut[static_cast<std::uint8_t>(DataType::UBigInt)] = DataType::UBigInt;
-    lut[static_cast<std::uint8_t>(DataType::Float)] = DataType::Float;
-    lut[static_cast<std::uint8_t>(DataType::Double)] = DataType::Double;
-    lut[static_cast<std::uint8_t>(DataType::Date)] = DataType::Date;
-    lut[static_cast<std::uint8_t>(DataType::Time)] = DataType::Time;
-    lut[static_cast<std::uint8_t>(DataType::Timestamp)] = DataType::Timestamp;
-    lut[static_cast<std::uint8_t>(DataType::Boolean)] = DataType::Boolean;
-    lut[static_cast<std::uint8_t>(DataType::Decimal)] = DataType::Decimal;
-    lut[static_cast<std::uint8_t>(DataType::VarChar)] = DataType::VarChar;
-    lut[static_cast<std::uint8_t>(DataType::Text)] = DataType::Text;
-    lut[static_cast<std::uint8_t>(DataType::VarBinary)] = DataType::VarBinary;
-    lut[static_cast<std::uint8_t>(DataType::Blob)] = DataType::Blob;
-    lut[static_cast<std::uint8_t>(DataType::Uuid)] = DataType::Uuid;
-    lut[static_cast<std::uint8_t>(DataType::Array)] = DataType::Array;
-    lut[static_cast<std::uint8_t>(DataType::Json)] = DataType::Json;
-    lut[static_cast<std::uint8_t>(DataType::JsonB)] = DataType::JsonB;
-    lut[static_cast<std::uint8_t>(DataType::PhoneNumber)] = DataType::PhoneNumber;
-    lut[static_cast<std::uint8_t>(DataType::EmailAddress)] = DataType::EmailAddress;
-    lut[static_cast<std::uint8_t>(DataType::Address)] = DataType::Address;
-    lut[static_cast<std::uint8_t>(DataType::Telegram)] = DataType::Telegram;
+constexpr std::array<ColumnDef::DataType, 256> CreateTypeLut() {
+    std::array<ColumnDef::DataType, 256> lut{};
+    lut.fill(ColumnDef::DataType::Unknown);
+
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Null)] = ColumnDef::DataType::Null;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::TinyInt)] = ColumnDef::DataType::TinyInt;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::SmallInt)] = ColumnDef::DataType::SmallInt;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Integer)] = ColumnDef::DataType::Integer;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::BigInt)] = ColumnDef::DataType::BigInt;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::UTinyInt)] = ColumnDef::DataType::UTinyInt;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::USmallInt)] = ColumnDef::DataType::USmallInt;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::UInteger)] = ColumnDef::DataType::UInteger;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::UBigInt)] = ColumnDef::DataType::UBigInt;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Float)] = ColumnDef::DataType::Float;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Double)] = ColumnDef::DataType::Double;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Date)] = ColumnDef::DataType::Date;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Time)] = ColumnDef::DataType::Time;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Timestamp)] = ColumnDef::DataType::Timestamp;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Boolean)] = ColumnDef::DataType::Boolean;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Decimal)] = ColumnDef::DataType::Decimal;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::VarChar)] = ColumnDef::DataType::VarChar;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Text)] = ColumnDef::DataType::Text;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::VarBinary)] = ColumnDef::DataType::VarBinary;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Blob)] = ColumnDef::DataType::Blob;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Uuid)] = ColumnDef::DataType::Uuid;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Array)] = ColumnDef::DataType::Array;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Json)] = ColumnDef::DataType::Json;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::JsonB)] = ColumnDef::DataType::JsonB;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::PhoneNumber)] = ColumnDef::DataType::PhoneNumber;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::EmailAddress)] = ColumnDef::DataType::EmailAddress;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Address)] = ColumnDef::DataType::Address;
+    lut[static_cast<std::uint8_t>(ColumnDef::DataType::Telegram)] = ColumnDef::DataType::Telegram;
 
     return lut;
 }
 
-// The global, compile-time generated lookup table.
-// Provides an efficient, safe way to map a byte to a `DataType`.
-// Usage: `DataType type = TYPE_LUT[byte_code];`
 constexpr auto TYPE_LUT = CreateTypeLut();

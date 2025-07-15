@@ -24,6 +24,6 @@ void FileManager::createFile(const std::filesystem::path& path) {
 // Creates a directory at the specified path if one does not already exist.
 void FileManager::createDirectory(const std::filesystem::path& path) {
     if (!fileExists(path)) {
-        std::filesystem::create_directory(path);
+        std::filesystem::create_directories(path);
     }
 }

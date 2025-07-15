@@ -5,31 +5,12 @@
 #include <memory>
 
 #include "types.h"
+#include "physical/table.h"
 #include <utility>
 
 // Forward declaration for a class used in a pointer/reference.
 // This tells the compiler "a class named Catalog exists" without needing its full definition.
 class Catalog;
-
-// Data transfer structures
-struct ColumnDef {
-    public:
-    std::string name;
-    DataType type;
-    bool primeryKey = false;
-    bool notNull = false;
-};
-
-struct Options {
-    public:
-    std::vector<std::string> additionalTypes = {};
-    int maxColumnLemgth = 16;
-    std::vector<std::string> additionalChars = {};
-    int maxStringLength = 16;
-    int gcFrequency = 7; // Frequency of garbage collection in days
-};
-
-struct Value { /*...*/ }; // Can use std::variant
 
 class StorageEngine {
 public:
@@ -50,10 +31,10 @@ public:
     void alterTColumn(const std::string& table_name, const std::string& column_name, const std::string& new_column_type); 
     void dropTable(const std::string& table_name);
     void dropColumn(const std::string& table_name, const std::string& column_name);
-    
 
-private:
+
     std::string data_path_;
+    std::unique_ptr<Table> getTable(const std::string& table_name);
     
     // The compiler now knows what std::unique_ptr and Catalog are.
     std::unique_ptr<Catalog> db_catalog_;

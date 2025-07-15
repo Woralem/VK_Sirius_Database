@@ -1,4 +1,0 @@
-C:/Users/Gleb/Videos/Storage/build/CMakeFiles/storage_engine.dir
-C:/Users/Gleb/Videos/Storage/build/CMakeFiles/main.dir
-C:/Users/Gleb/Videos/Storage/build/CMakeFiles/edit_cache.dir
-C:/Users/Gleb/Videos/Storage/build/CMakeFiles/rebuild_cache.dir
