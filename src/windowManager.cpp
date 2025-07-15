@@ -114,36 +114,6 @@ crow::response WindowManager::add(const std::string& req) {
     });
 }
 
-//Обновить содержимое окна по id
-crow::response WindowManager::update (const std::string& req) {
-    json json_request = json::parse(req);
-    if (!json_request.contains("id") || !json_request["id"].is_string()) {
-        return JsonHandler::createJsonResponse(400, json{
-                {"status", "error"},
-                {"message", "Request body must contain 'id' field"}
-            });
-    }
-    if (!json_request.contains("value") || !json_request["value"].is_string()) {
-        return JsonHandler::createJsonResponse(400, json{
-                {"status", "error"},
-                {"message", "Request body must contain 'value' field"}
-            });
-    }
-    std::string id = json_request["id"].get<std::string>();
-    std::lock_guard<std::mutex> lock(mtx);
-    if (!WindowManager::manager.contains(id)) {
-        return JsonHandler::createJsonResponse(409, json{
-            {"status", "error"},
-            {"error", ("Unknown id: " + id)}
-            });
-    }
-    WindowManager::manager[id] = json_request["value"].get<std::string>();
-    return JsonHandler::createJsonResponse(200, json{
-        {"status", "success"},
-    });
-
-}
-
 //Сменить окно
 crow::response WindowManager::changeWindow(const std::string& req) {
     json json_request = json::parse(req);
@@ -201,7 +171,7 @@ crow::response WindowManager::getCurrent() {
 }
 
 //Обновить текущее окно
-crow::response WindowManager:: updateCurrent(const std::string& req) {
+crow::response WindowManager:: update(const std::string& req) {
     json json_request = json::parse(req);
     if (!json_request.contains("value")) {
         return JsonHandler::createJsonResponse(400, json{

@@ -122,7 +122,7 @@ void HttpServer::setupRoutes() {
         }
     });
 
-    //Обновить содержимое окна по id
+    //Обновить содержимое текущего окна
     CROW_ROUTE(app, "/update").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
