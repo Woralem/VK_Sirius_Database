@@ -1,5 +1,6 @@
 #include <string>
 #include <unordered_map>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <crow.h>
 
@@ -9,11 +10,13 @@
 using json = nlohmann::json;
 
 WindowManager::WindowManager() {
+    cur_window = "File_1";
     manager[cur_window] = "";
 }
 
 //Получить все пары ключ-значение json строкой
 crow::response WindowManager::get() {
+    //std::lock_guard<std::mutex> lock(mtx);
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
         {"data", WindowManager::manager}
@@ -30,6 +33,7 @@ crow::response WindowManager::get(const std::string& req) {
             });
     }
     std::string id = json_request["id"].get<std::string>();
+    std::lock_guard<std::mutex> lock(mtx);
     if (!WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -47,9 +51,10 @@ crow::response WindowManager::get(const std::string& req) {
 
 //Удалить всё
 crow::response WindowManager::remove() {
-    std::string tmp;
-    manager.clear();
+    std::lock_guard<std::mutex> lock(mtx);
     cur_window = "File_1";
+    std::string tmp = manager[cur_window];
+    manager.clear();
     manager[cur_window] = tmp;
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"}
@@ -66,6 +71,7 @@ crow::response WindowManager::remove(const std::string& req) {
             });
     }
     std::string id = json_request["id"].get<std::string>();
+    std::lock_guard<std::mutex> lock(mtx);
     if (!WindowManager::manager.contains(id) || id == "File_1") {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -93,6 +99,7 @@ crow::response WindowManager::add(const std::string& req) {
                 {"message", "Request body must contain 'value' field"}
             });
     }
+    std::lock_guard<std::mutex> lock(mtx);
     std::string id = WindowManager::generate_next();
     WindowManager::cur_window = id;
     if (WindowManager::manager.contains(id)) {
@@ -123,6 +130,7 @@ crow::response WindowManager::update (const std::string& req) {
             });
     }
     std::string id = json_request["id"].get<std::string>();
+    std::lock_guard<std::mutex> lock(mtx);
     if (!WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -146,6 +154,7 @@ crow::response WindowManager::changeWindow(const std::string& req) {
         });
     }
     std::string id = json_request["id"].get<std::string>();
+    std::lock_guard<std::mutex> lock(mtx);
     if (!WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -165,6 +174,7 @@ crow::response WindowManager::changeWindow(const std::string& req) {
 //Получить список id существующих окон
 crow::response WindowManager::getList () {
     json windows = json::array();
+    std::lock_guard<std::mutex> lock(mtx);
     for (auto& [id, window] : WindowManager::manager) {
         windows.push_back(id);
     }
@@ -176,6 +186,7 @@ crow::response WindowManager::getList () {
 
 //получить информацию о текущем окне
 crow::response WindowManager::getCurrent() {
+    std::lock_guard<std::mutex> lock(mtx);
     if (cur_window == "") {
         return JsonHandler::createJsonResponse(400, json{
             {"status", "error"},
@@ -198,6 +209,7 @@ crow::response WindowManager:: updateCurrent(const std::string& req) {
                 {"message", "Request body must contain 'value' field"}
             });
     }
+    std::lock_guard<std::mutex> lock(mtx);
     std::string id = WindowManager::cur_window;
     if (id == " ") {
         return JsonHandler::createJsonResponse(409, json{
@@ -218,6 +230,7 @@ crow::response WindowManager:: updateCurrent(const std::string& req) {
 }
 
 std::string WindowManager::generate_next() {
+    std::lock_guard<std::mutex> lock(mtx);
     WindowManager::max_id += 1;
     return std::format("File_{}", WindowManager::max_id);
 }

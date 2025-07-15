@@ -1,11 +1,15 @@
 #pragma once
 #include <string>
-#include <unordered_map>
-#include<crow.h>
+#include <map>
+#include <crow.h>
+#include <mutex>
 
 class WindowManager {
-std::unordered_map<std::string, std::string> manager;
-std::string cur_window = "File_1";
+    std::map<std::string, std::string> manager;
+    std::string cur_window;
+    std::mutex mtx;
+    int max_id = 1;
+    std::string generate_next();
 public:
     WindowManager();
     ~WindowManager() {}
@@ -19,7 +23,5 @@ public:
     crow::response getList();//Получить список id существующих окон
     crow::response getCurrent();//Получить содержимое активного окна
     crow::response updateCurrent(const std::string& req);//Обновить текущее окно
-private:
-    int max_id = 1;
-    std::string generate_next();
+
 };

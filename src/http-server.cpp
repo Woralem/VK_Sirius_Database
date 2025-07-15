@@ -218,7 +218,7 @@ void HttpServer::setupRoutes() {
     });
 
     ///Получить все пары ключ-значение json -ом (для окон)
-    CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Get)//Получить все пары ключ-значение json строкой
+    CROW_ROUTE(app, "/get").methods(crow::HTTPMethod::Get)
     ([&]() {
         try {
            return wm.get();
