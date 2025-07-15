@@ -45,6 +45,7 @@ struct StorageInterface {
     [[nodiscard]] virtual bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) = 0;
     [[nodiscard]] virtual bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) = 0;
     [[nodiscard]] virtual bool dropColumn(const std::string& tableName, const std::string& columnName) = 0;
+    [[nodiscard]] virtual bool addColumn(const std::string& tableName, const ColumnDef* columnDef) = 0;
 
     // DROP TABLE operation
     [[nodiscard]] virtual bool dropTable(const std::string& tableName) = 0;

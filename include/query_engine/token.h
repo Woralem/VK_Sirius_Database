@@ -17,6 +17,7 @@ namespace query_engine {
 
         // ALTER TABLE keywords
         ALTER, RENAME, TO, COLUMN, TYPE,
+        ADD,
 
         // DROP keyword
         DROP,

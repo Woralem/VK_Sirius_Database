@@ -301,8 +301,13 @@ bool OptimizedInMemoryStorage::insertRow(const std::string& tableName, const std
         if (colDef.primaryKey && !std::holds_alternative<std::monostate>(value)) {
             json tempJson;
             setJsonValue(tempJson, colDef.name, value);
+            auto keyValue = valueToIndexKey(tempJson[colDef.name]);
+
             if (table.indexes.contains(colDef.name) &&
-                table.indexes.at(colDef.name).contains(valueToIndexKey(tempJson[colDef.name]))) {
+                table.indexes.at(colDef.name).contains(keyValue) &&
+                !table.indexes.at(colDef.name).at(keyValue).empty()) {
+                std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m PRIMARY KEY constraint violated for column '{}' with value '{}'\n",
+                                        colDef.name, keyValue);
                 return false;
             }
         }
@@ -609,6 +614,86 @@ bool OptimizedInMemoryStorage::renameColumn(const std::string& tableName,
 
     return true;
 }
+
+bool OptimizedInMemoryStorage::addColumn(const std::string& tableName, const ColumnDef* columnDef) {
+    auto it = tables.find(tableName);
+    if (it == tables.end()) {
+        std::cout << std::format("\033[91m[ERROR]\033[0m Table '{}' does not exist.\n", tableName);
+        return false;
+    }
+
+    auto& table = it->second;
+
+    bool columnExists = std::ranges::any_of(table.schema, [&columnDef](const auto& col) {
+        return col.name == columnDef->name;
+    });
+
+    if (columnExists) {
+        std::cout << std::format("\033[91m[ERROR]\033[0m Column '{}' already exists.\n", columnDef->name);
+        return false;
+    }
+
+    if (!validateColumnName(columnDef->name, table.options)) {
+        std::cout << std::format("\033[91m[ERROR]\033[0m Invalid column name '{}'.\n", columnDef->name);
+        return false;
+    }
+
+    if (!table.options.allowedTypes.empty() && !table.options.allowedTypes.contains(columnDef->parsedType)) {
+        std::cout << std::format("\033[91m[ERROR]\033[0m Type '{}' is not allowed for this table.\n",
+                                dataTypeToString(columnDef->parsedType));
+        return false;
+    }
+
+    if (columnDef->primaryKey && table.data.size() > 0) {
+        std::cout << std::format("\033[91m[ERROR]\033[0m Cannot add PRIMARY KEY column '{}' to table with existing data.\n",
+                                columnDef->name);
+        return false;
+    }
+
+    std::cout << std::format("\033[96m[INFO]\033[0m Adding column '{}' of type {} to table '{}'...\n",
+                            columnDef->name, dataTypeToString(columnDef->parsedType), tableName);
+
+    table.schema.push_back(*columnDef);
+
+    if (columnDef->primaryKey) {
+        table.indexes[columnDef->name];
+    }
+
+    for (size_t i = 0; i < table.data.size(); ++i) {
+        auto& row = table.data[i];
+        if (!row.is_null()) {
+            if (columnDef->notNull) {
+                switch (columnDef->parsedType) {
+                    case DataType::INT:
+                        row[columnDef->name] = int64_t(0);
+                        break;
+                    case DataType::DOUBLE:
+                        row[columnDef->name] = 0.0;
+                        break;
+                    case DataType::VARCHAR:
+                        row[columnDef->name] = "";
+                        break;
+                    case DataType::BOOLEAN:
+                        row[columnDef->name] = false;
+                        break;
+                    default:
+                        row[columnDef->name] = nullptr;
+                        break;
+                }
+            } else {
+                row[columnDef->name] = nullptr;
+            }
+            if (columnDef->primaryKey && !row[columnDef->name].is_null()) {
+                table.indexes[columnDef->name][valueToIndexKey(row[columnDef->name])].push_back(i);
+            }
+        }
+    }
+
+    std::cout << std::format("\033[92m[SUCCESS]\033[0m Column '{}' added successfully to {} existing rows!\n",
+                            columnDef->name, table.data.size());
+    return true;
+}
+
 
 bool OptimizedInMemoryStorage::alterColumnType(const std::string& tableName,
                                                const std::string& columnName,

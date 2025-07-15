@@ -153,19 +153,39 @@ nlohmann::json QueryExecutor::executeInsert(const InsertStmt* stmt) {
 
     nlohmann::json result;
     int rowsInserted = 0;
+    int totalRows = stmt->values.size();
+    std::vector<std::string> errors;
 
-    for (const auto& valueList : stmt->values) {
+    for (size_t i = 0; i < stmt->values.size(); ++i) {
+        const auto& valueList = stmt->values[i];
         if (storage->insertRow(stmt->tableName, stmt->columns, valueList)) {
             rowsInserted++;
+        } else {
+            errors.push_back(std::format("Failed to insert row {}", i + 1));
         }
     }
 
     if (enableLogging) {
-        LOGF_SUCCESS("Executor", "Inserted {} row(s)", rowsInserted);
+        LOGF_SUCCESS("Executor", "Inserted {} out of {} row(s)", rowsInserted, totalRows);
     }
 
-    result["status"] = "success";
+    if (rowsInserted == 0) {
+        result["status"] = "error";
+        result["message"] = "Failed to insert any rows";
+        if (!errors.empty()) {
+            result["details"] = errors;
+        }
+    } else if (rowsInserted < totalRows) {
+        result["status"] = "warning";
+        result["message"] = std::format("Inserted {} out of {} rows", rowsInserted, totalRows);
+        result["details"] = errors;
+    } else {
+        result["status"] = "success";
+        result["message"] = "All rows inserted successfully";
+    }
+
     result["rows_affected"] = rowsInserted;
+    result["total_rows"] = totalRows;
     return result;
 }
 
@@ -305,6 +325,15 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
             success = storage->dropColumn(stmt->tableName, stmt->columnName);
             message = success ? "Column dropped successfully" : "Failed to drop column";
             break;
+
+        case AlterTableStmt::AlterType::ADD_COLUMN:
+            if (enableLogging) {
+                LOGF_DEBUG("Executor", "Adding column '{}' to table", stmt->newColumn->name);
+            }
+            success = storage->addColumn(stmt->tableName, stmt->newColumn.get());
+            message = success ? "Column added successfully" : "Failed to add column";
+            break;
+
     }
 
     result["status"] = success ? "success" : "error";

@@ -56,6 +56,7 @@ public:
     [[nodiscard]] bool renameColumn(const std::string& tableName, const std::string& oldColumnName, const std::string& newColumnName) override;
     [[nodiscard]] bool alterColumnType(const std::string& tableName, const std::string& columnName, DataType newType) override;
     [[nodiscard]] bool dropColumn(const std::string& tableName, const std::string& columnName) override;
+    [[nodiscard]] bool addColumn(const std::string& tableName, const ColumnDef* columnDef) override;
 
     // DROP TABLE operation
     [[nodiscard]] bool dropTable(const std::string& tableName) override;

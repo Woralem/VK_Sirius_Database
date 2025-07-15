@@ -381,7 +381,12 @@ std::unique_ptr<AlterTableStmt> Parser::alterTableStatement() {
         consume(TokenType::COLUMN, "Expected COLUMN after DROP");
         stmt->alterType = AlterTableStmt::AlterType::DROP_COLUMN;
         stmt->columnName = consume(TokenType::IDENTIFIER, "Expected column name").lexeme;
-    } else {
+    } else if (match({TokenType::ADD})) {
+        consume(TokenType::COLUMN, "Expected COLUMN after ADD");
+        stmt->alterType = AlterTableStmt::AlterType::ADD_COLUMN;
+        stmt->newColumn = parseColumnDef();
+    }
+    else {
         error("Expected RENAME, ALTER, or DROP after table name");
     }
 

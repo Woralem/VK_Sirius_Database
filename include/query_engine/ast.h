@@ -152,7 +152,8 @@ struct AlterTableStmt : public Statement {
         RENAME_TABLE,
         RENAME_COLUMN,
         ALTER_COLUMN_TYPE,
-        DROP_COLUMN
+        DROP_COLUMN,
+        ADD_COLUMN
     };
     AlterType alterType;
     std::string tableName;
@@ -161,6 +162,7 @@ struct AlterTableStmt : public Statement {
     std::string newColumnName;
     std::string newDataType;
     DataType newParsedType;
+    std::unique_ptr<ColumnDef> newColumn;
     AlterTableStmt() : Statement(Type::ALTER_TABLE_STMT) {}
 };
 
