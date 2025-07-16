@@ -442,6 +442,7 @@ json OptimizedInMemoryStorage::selectRows(const std::string& tableName,
                                           std::function<bool(const json&)> predicate) {
     json result;
     result["status"] = "success";
+    result["table_name"] = tableName;
 
     auto it = tables.find(tableName);
     if (it == tables.end()) {

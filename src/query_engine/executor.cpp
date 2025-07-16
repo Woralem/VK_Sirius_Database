@@ -138,6 +138,8 @@ nlohmann::json QueryExecutor::executeSelect(const SelectStmt* stmt) {
     auto predicate = createPredicate(stmt->whereClause.get());
     auto result = storage->selectRows(stmt->tableName, stmt->columns, predicate);
 
+    result["table_name"] = stmt->tableName;
+
     if (enableLogging && result.contains("data") && result["data"].is_array()) {
         LOGF_SUCCESS("Executor", "Selected {} rows", result["data"].size());
     }
@@ -186,6 +188,7 @@ nlohmann::json QueryExecutor::executeInsert(const InsertStmt* stmt) {
 
     result["rows_affected"] = rowsInserted;
     result["total_rows"] = totalRows;
+    result["table_name"] = stmt->tableName;
     return result;
 }
 
@@ -209,6 +212,7 @@ nlohmann::json QueryExecutor::executeUpdate(const UpdateStmt* stmt) {
     nlohmann::json result;
     result["status"] = "success";
     result["rows_affected"] = rowsUpdated;
+    result["table_name"] = stmt->tableName;
     return result;
 }
 
@@ -231,6 +235,7 @@ nlohmann::json QueryExecutor::executeDelete(const DeleteStmt* stmt) {
     nlohmann::json result;
     result["status"] = "success";
     result["rows_affected"] = rowsDeleted;
+    result["table_name"] = stmt->tableName;
     return result;
 }
 
@@ -272,6 +277,7 @@ nlohmann::json QueryExecutor::executeCreateTable(const CreateTableStmt* stmt) {
     nlohmann::json result;
     result["status"] = success ? "success" : "error";
     result["message"] = success ? "Table created successfully" : "Failed to create table";
+    result["table_name"] = stmt->tableName;
 
     if (enableLogging) {
         if (success) {
@@ -338,6 +344,7 @@ nlohmann::json QueryExecutor::executeAlterTable(const AlterTableStmt* stmt) {
 
     result["status"] = success ? "success" : "error";
     result["message"] = message;
+    result["table_name"] = stmt->tableName;
 
     if (enableLogging) {
         if (success) {
@@ -361,6 +368,7 @@ nlohmann::json QueryExecutor::executeDropTable(const DropTableStmt* stmt) {
     if (success) {
         result["status"] = "success";
         result["message"] = std::format("Table '{}' dropped successfully", stmt->tableName);
+        result["table_name"] = stmt->tableName;
         if (enableLogging) {
             LOGF_SUCCESS("Executor", "Table '{}' dropped successfully", stmt->tableName);
         }
@@ -368,12 +376,14 @@ nlohmann::json QueryExecutor::executeDropTable(const DropTableStmt* stmt) {
         if (stmt->ifExists) {
             result["status"] = "success";
             result["message"] = std::format("Table '{}' does not exist (IF EXISTS specified)", stmt->tableName);
+            result["table_name"] = stmt->tableName;
             if (enableLogging) {
                 LOGF_INFO("Executor", "Table '{}' does not exist (IF EXISTS specified)", stmt->tableName);
             }
         } else {
             result["status"] = "error";
             result["message"] = std::format("Table '{}' does not exist", stmt->tableName);
+            result["table_name"] = stmt->tableName;
             if (enableLogging) {
                 LOGF_ERROR("Executor", "Table '{}' does not exist", stmt->tableName);
             }
