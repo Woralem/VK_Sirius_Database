@@ -12,7 +12,7 @@ class WindowManager {
     std::string generate_next();
 public:
     WindowManager();
-    ~WindowManager() {}
+    ~WindowManager() = default;
     crow::response get();//Получить все пары ключ-значение json строкой
     crow::response get(const std::string& req);//Получить пару по id
     crow::response add(const std::string& req);//Добавить окно, если оно уже есть - ошибка

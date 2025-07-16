@@ -32,7 +32,7 @@ void HttpServer::setupRoutes() {
             return DBhandler::changeDB(cur_db, req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, " API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -43,7 +43,7 @@ void HttpServer::setupRoutes() {
             return DBhandler::DB(cur_db, req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
     }
 });
 
@@ -51,10 +51,10 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/Table").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
-            return TableHandler::table(cur_db, cur_table, cur_headers, req.body);
+            return TableHandler::table(cur_db, cur_table, cur_headers, cur_types, req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -62,7 +62,7 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/query").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
-           return TableHandler::makeQuery(cur_db, req.body);
+           return TableHandler::makeQuery(cur_db, cur_table, cur_headers, cur_types, req.body);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
@@ -85,7 +85,7 @@ void HttpServer::setupRoutes() {
             return LogHandler::deleteQuery(cur_db, req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -96,7 +96,7 @@ void HttpServer::setupRoutes() {
             return wm.get(req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -107,7 +107,7 @@ void HttpServer::setupRoutes() {
             return wm.remove(req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -118,7 +118,7 @@ void HttpServer::setupRoutes() {
             return wm.add(req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -129,7 +129,7 @@ void HttpServer::setupRoutes() {
             return wm.update(req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -140,7 +140,7 @@ void HttpServer::setupRoutes() {
             return wm.changeWindow(req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -152,7 +152,7 @@ void HttpServer::setupRoutes() {
             return LogHandler::getQueries(cur_db);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -162,7 +162,7 @@ void HttpServer::setupRoutes() {
             return LogHandler::getErrors(cur_db);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
     CROW_ROUTE(app, "/DB/query/history/delete").methods(crow::HTTPMethod::Get)
@@ -180,7 +180,7 @@ void HttpServer::setupRoutes() {
             return LogHandler::deleteErrors(cur_db);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -191,7 +191,7 @@ void HttpServer::setupRoutes() {
             return DBhandler::removeDB(cur_db, database);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -202,7 +202,7 @@ void HttpServer::setupRoutes() {
            return DBhandler::listDB();
         }
         catch (const std::exception& e) {
-           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+           return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -213,7 +213,7 @@ void HttpServer::setupRoutes() {
            return wm.get();
         }
         catch (const std::exception& e) {
-           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+           return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -224,7 +224,7 @@ void HttpServer::setupRoutes() {
           return wm.remove();
        }
        catch (const std::exception& e) {
-          return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+          return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
        }
    });
 
@@ -235,7 +235,7 @@ void HttpServer::setupRoutes() {
            return wm.getList();
         }
         catch (const std::exception& e) {
-           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+           return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -246,7 +246,7 @@ void HttpServer::setupRoutes() {
            return wm.getCurrent();
         }
         catch (const std::exception& e) {
-           return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+           return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -258,7 +258,7 @@ void HttpServer::setupRoutes() {
             return wm.changeWindow(req.body);//ВОТ ТУТ
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 
@@ -266,11 +266,10 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/authorisation").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
-
-            return wm.changeWindow(req.body);//ВОТ ТУТ
+            return sm.addSession(req.body);
         }
         catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+            return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
         }
     });
 }
@@ -366,6 +365,16 @@ void HttpServer::setupCorsRoutes() {
     .methods(crow::HTTPMethod::Options)
     ([](const crow::request& req){
         return JsonHandler::handleCors(req, "GET, OPTIONS");
+    });
+    CROW_ROUTE(app, "/registration")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
+    });
+    CROW_ROUTE(app, "/authorisation")
+    .methods(crow::HTTPMethod::Options)
+    ([](const crow::request& req){
+        return JsonHandler::handleCors(req, "POST, OPTIONS");
     });
 
 }

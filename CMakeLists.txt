@@ -12,6 +12,8 @@ add_executable(VK_Database_API_Layer
         ${SOURCES}
         ${HEADERS}
         src/sessionManager.cpp
+        include/userManager.h
+        src/userManager.cpp
 )
 
 # Настройка выходных каталогов

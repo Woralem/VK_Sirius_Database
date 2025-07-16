@@ -17,13 +17,15 @@ namespace TableHandler {
         return DB_Table_POST::ERR;
     }
     crow::response table(const std::string& cur_db, const std::string& cur_table,
-         json& cur_headers, const std::string& req);
+         json& cur_headers, json& cur_types, const std::string& req);
     crow::response revalCell(const std::string& cur_db, const std::string& cur_table,
-        const json& cur_headers, const json& json_request);
-    crow::response retypeColumn(const std::string& cur_db, const std::string& cur_table, const json& json_request);
+        const json& cur_headers, const json& cur_types, const json& json_request);
+    crow::response retypeColumn(const std::string& cur_db, const std::string& cur_table,
+        const json& cur_headers,json& cur_types, const json& json_request);
     crow::response renameColumn(const std::string& cur_db, const std::string& cur_table,
         json& cur_headers, const json& json_request);
-    crow::response makeQuery(const std::string& cur_db, const std::string& req);
+    crow::response makeQuery(const std::string& cur_db,  std::string& cur_table,
+        json& cur_headers, json& cur_types, const std::string& req);
     //Внимательно посмотреть функцию
     int parse_column_number_from_cell_id(std::string_view cell_id);
 

@@ -4,6 +4,7 @@
 #include<crow/middlewares/cors.h>
 #include"windowManager.h"
 #include <nlohmann/json.hpp>
+#include "sessionManager.h"
 using json = nlohmann::json;
 
 class HttpServer {
@@ -19,9 +20,11 @@ public:
     void run(int port = 8090);
 private:
     crow::App<crow::CORSHandler> app;
+    SessionManager sm;
     //уйдет в Session:
     std::string cur_db;
     std::string cur_table = "";
     json cur_headers;
+    json cur_types;
     WindowManager wm;
 };
