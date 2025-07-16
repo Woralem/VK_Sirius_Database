@@ -17,7 +17,7 @@ namespace DBhandler {
     }
     crow::response createDB(std::string& cur_db, const json& json_request);
     crow::response removeDB(std::string& cur_db, const std::string& req);//удаление по id
-    crow::response renameDB(std::string& cur_db, const json& json_request);//переименновать текущую
+    crow::response renameDB(std::string& cur_db, const std::string& database);//переименновать текущую
     crow::response listDB();
     crow::response DB(std::string& cur_db, const std::string& req);
     crow::response changeDB(std::string& cur_db, const std::string& req);

@@ -61,16 +61,8 @@ namespace DBhandler {
         res.body=db_res.text;
         return res;
     }
-    crow::response removeDB(std::string& cur_db, const std::string& req) {
-        json json_request = json::parse(req);
-        if (!json_request.contains("db_name") || !json_request["db_name"].is_string()) {
-            return JsonHandler::createJsonResponse(400, json{
-                {"status", "error"},
-                {"message", "Request body must contain 'db_name' field"}
-            });
-        }
-        std::string db_name = json_request["db_name"].get<std::string>();
-
+    crow::response removeDB(std::string& cur_db, const std::string& database) {
+        std::string db_name = database;
         crow::response res;
         cpr::Response db_res = cpr::Post(
             cpr::Url{std::format("{}/api/db/delete", HttpServer::getServerURL())},

@@ -11,6 +11,7 @@ file(GLOB_RECURSE HEADERS "include/*.h")
 add_executable(VK_Database_API_Layer
         ${SOURCES}
         ${HEADERS}
+        src/sessionManager.cpp
 )
 
 # Настройка выходных каталогов

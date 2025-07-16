@@ -9,7 +9,7 @@
 #include "log-handler.h"
 #include "table-handler.h"
 #include "windowManager.h"
-
+#include "sessionManager.h"
 HttpServer::HttpServer() {
     cur_db = "default";
     std::cout << "HTTP Server created!" << std::endl;
@@ -51,7 +51,7 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/Table").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
-            return TableHandler::table(cur_db, req.body);
+            return TableHandler::table(cur_db, cur_table, cur_headers, req.body);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
@@ -144,17 +144,6 @@ void HttpServer::setupRoutes() {
         }
     });
 
-    //Обновить текущее окно
-    CROW_ROUTE(app, "/update/current").methods(crow::HTTPMethod::Post)//сменить окно
-    ([&](const crow::request& req) {
-        try {
-            return wm.updateCurrent(req.body);
-        }
-        catch (const std::exception& e) {
-            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
-        }
-    });
-
 
     CROW_ROUTE(app, "/DB/query/history").methods(crow::HTTPMethod::Get)
     ([&]() {
@@ -196,10 +185,10 @@ void HttpServer::setupRoutes() {
     });
 
     //Удалить бд по id
-    CROW_ROUTE(app, "/DB/remove").methods(crow::HTTPMethod::Delete)
-    ([&](const crow::request& req) {
+    CROW_ROUTE(app, "/DB/remove/<string>").methods(crow::HTTPMethod::Delete)
+    ([&](const std::string& database) {
         try {
-            return DBhandler::removeDB(cur_db, req.body);
+            return DBhandler::removeDB(cur_db, database);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
@@ -260,6 +249,30 @@ void HttpServer::setupRoutes() {
            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
         }
     });
+
+
+    //Регистрация ПОМЕНЯТЬ ЛОГИКУ!!!!
+    CROW_ROUTE(app, "/registration").methods(crow::HTTPMethod::Post)
+    ([&](const crow::request& req) {
+        try {
+            return wm.changeWindow(req.body);//ВОТ ТУТ
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
+
+    //Авторизация ПОМЕНЯТЬ ЛОГИКУ!!!
+    CROW_ROUTE(app, "/authorisation").methods(crow::HTTPMethod::Post)
+    ([&](const crow::request& req) {
+        try {
+
+            return wm.changeWindow(req.body);//ВОТ ТУТ
+        }
+        catch (const std::exception& e) {
+            return JsonHandler::createJsonResponse(500, "Internal error: " + (std::string)e.what());
+        }
+    });
 }
 void HttpServer::setupCorsRoutes() {
     auto& cors = app.get_middleware<crow::CORSHandler>();
@@ -309,9 +322,9 @@ void HttpServer::setupCorsRoutes() {
     ([](const crow::request& req){
         return JsonHandler::handleCors(req, "GET, OPTIONS");
     });
-    CROW_ROUTE(app, "/DB/remove")
+    CROW_ROUTE(app, "/DB/remove/<string>")
     .methods(crow::HTTPMethod::Options)
-    ([](const crow::request& req){
+    ([](const crow::request& req, const std::string& database){
         return JsonHandler::handleCors(req, "DELETE, OPTIONS");
     });
     CROW_ROUTE(app, "/DB/list")

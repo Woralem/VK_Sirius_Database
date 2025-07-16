@@ -16,7 +16,7 @@ WindowManager::WindowManager() {
 
 //Получить все пары ключ-значение json строкой
 crow::response WindowManager::get() {
-    //std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(mtx);
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
         {"data", WindowManager::manager}
@@ -200,7 +200,6 @@ crow::response WindowManager:: update(const std::string& req) {
 }
 
 std::string WindowManager::generate_next() {
-    std::lock_guard<std::mutex> lock(mtx);
     WindowManager::max_id += 1;
     return std::format("File_{}", WindowManager::max_id);
 }

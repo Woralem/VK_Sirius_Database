@@ -3,6 +3,8 @@
 #include<crow.h>
 #include<crow/middlewares/cors.h>
 #include"windowManager.h"
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 class HttpServer {
 public:
@@ -17,6 +19,9 @@ public:
     void run(int port = 8090);
 private:
     crow::App<crow::CORSHandler> app;
+    //уйдет в Session:
     std::string cur_db;
+    std::string cur_table = "";
+    json cur_headers;
     WindowManager wm;
 };
