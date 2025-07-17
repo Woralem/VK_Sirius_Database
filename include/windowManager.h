@@ -6,7 +6,7 @@
 
 class WindowManager {
     std::map<std::string, std::string> manager;
-    std::string cur_window;
+    std::string cur_window = "File_1";
     std::mutex mtx;
     int max_id = 1;
     std::string generate_next();

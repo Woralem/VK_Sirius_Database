@@ -72,7 +72,7 @@ crow::response WindowManager::remove(const std::string& req) {
     }
     std::string id = json_request["id"].get<std::string>();
     std::lock_guard<std::mutex> lock(mtx);
-    if (!WindowManager::manager.contains(id) || id == "File_1") {
+    if (!WindowManager::manager.contains(id) || id == cur_window) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("Unknown id: " + id)}
@@ -82,7 +82,7 @@ crow::response WindowManager::remove(const std::string& req) {
     if (cur_window == id && !manager.empty()) {
         cur_window = manager.begin()->first;
     } else {
-        cur_window = "";
+        cur_window = "File_1";
     }
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
@@ -157,7 +157,7 @@ crow::response WindowManager::getList () {
 //получить информацию о текущем окне
 crow::response WindowManager::getCurrent() {
     std::lock_guard<std::mutex> lock(mtx);
-    if (cur_window == "") {
+    if (cur_window == "File_1") {
         return JsonHandler::createJsonResponse(400, json{
             {"status", "error"},
             {"error", "There are no active window"}
@@ -180,26 +180,26 @@ crow::response WindowManager:: update(const std::string& req) {
             });
     }
     std::lock_guard<std::mutex> lock(mtx);
-    std::string id = WindowManager::cur_window;
-    if (id == " ") {
+    std::string id = cur_window;
+    if (id == "") {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("There are no active window")}
             });
     }
-    if (!WindowManager::manager.contains(id)) {
+    if (!manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("Internal error with cur_window")}
             });
     }
-    WindowManager::manager[id] = json_request["value"].get<std::string>();
+    manager[id] = json_request["value"].get<std::string>();
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
     });
 }
 
 std::string WindowManager::generate_next() {
-    WindowManager::max_id += 1;
-    return std::format("File_{}", WindowManager::max_id);
+    max_id += 1;
+    return std::format("File_{}", max_id);
 }

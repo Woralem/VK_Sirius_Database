@@ -24,6 +24,7 @@ private:
     //уйдет в Session:
     std::string cur_db;
     std::string cur_table = "";
+    std::string cur_select = "";
     json cur_headers;
     json cur_types;
     WindowManager wm;

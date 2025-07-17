@@ -51,7 +51,7 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/Table").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
-            return TableHandler::table(cur_db, cur_table, cur_headers, cur_types, req.body);
+            return TableHandler::table(cur_db, cur_table, cur_headers, cur_types,cur_select, req.body);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());
@@ -62,7 +62,7 @@ void HttpServer::setupRoutes() {
     CROW_ROUTE(app, "/DB/query").methods(crow::HTTPMethod::Post)
     ([&](const crow::request& req) {
         try {
-           return TableHandler::makeQuery(cur_db, cur_table, cur_headers, cur_types, req.body);
+           return TableHandler::makeQuery(cur_db, cur_table, cur_headers, cur_types,cur_select, req.body);
         }
         catch (const std::exception& e) {
             return JsonHandler::createJsonResponse(500, "API Internal error: " + (std::string)e.what());

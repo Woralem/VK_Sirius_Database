@@ -11,8 +11,8 @@
 namespace TableHandler{
     using json = nlohmann::json;
     //Возможно с одиночными кавычками ошибка будет!!
-    crow::response revalCell(const std::string& cur_db, const std::string& cur_table,
-        const json& cur_headers, const json& cur_types, const json& json_request) {
+    crow::response revalCell(const std::string& cur_db, std::string& cur_table,
+         json& cur_headers,  json& cur_types, std::string& cur_select, const json& json_request) {
         crow::response res;
         CROW_LOG_INFO << "cell-handler started";
         if (!json_request.contains("cell_id") || !json_request["cell_id"].is_string()) {
@@ -101,14 +101,14 @@ namespace TableHandler{
         cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
         cpr::Body{db_req.dump()},
         cpr::Header{{"Content-Type", "application/json"}});
-        res.code = db_res.status_code;
-        res.add_header("Content-Type", "application/json");
-        res.add_header("Access-Control-Allow-Origin", "*");
-        res.body=db_res.text;
+        if (db_res.status_code >= 300) {
+            return JsonHandler::createJsonResponse(db_res.status_code, json::parse(db_res.text));
+        }
+        res = makeSelect(cur_db, cur_table, cur_headers, cur_types, cur_select);
         return res;
     }
-    crow::response retypeColumn(const std::string& cur_db, const std::string& cur_table,
-        const json& cur_headers, json& cur_types, const json& json_request) {
+    crow::response retypeColumn(const std::string& cur_db,  std::string& cur_table,
+         json& cur_headers, json& cur_types, std::string& cur_select, const json& json_request) {
         crow::response res;
         if (!json_request.contains("column_name") || !json_request["column_name"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
@@ -122,12 +122,6 @@ namespace TableHandler{
                 {"message", "Request body must contain 'new_type' field"}
             });
         }
-        for (int i = 0; i < cur_headers.size(); ++i) {
-            if (json_request["column_name"].get<std::string>() == cur_headers[i].get<std::string>()) {
-                cur_types[i] = json_request["new_type"];
-                break;
-            }
-        }
         json db_req;
         db_req["database"] = cur_db;
         db_req["query"] = "ALTER TABLE " + cur_table + " ALTER COLUMN " +
@@ -138,14 +132,14 @@ namespace TableHandler{
             cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
-        res.code = db_res.status_code;
-        res.add_header("Content-Type", "application/json");
-        res.add_header("Access-Control-Allow-Origin", "*");
-        res.body=db_res.text;
+        if (db_res.status_code >= 300) {
+            return JsonHandler::createJsonResponse(db_res.status_code, json::parse(db_res.text));
+        }
+        res = makeSelect(cur_db, cur_table, cur_headers, cur_types, cur_select);
         return res;
     }
-    crow::response renameColumn(const std::string& cur_db, const std::string& cur_table,
-        json& cur_headers, const json& json_request) {
+    crow::response renameColumn(const std::string& cur_db,  std::string& cur_table,
+        json& cur_headers,  json& cur_types, std::string& cur_select, const json& json_request) {
         crow::response res;
         if (!json_request.contains("old_column_name") || !json_request["old_column_name"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
@@ -170,23 +164,17 @@ namespace TableHandler{
             cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
-        res.code = db_res.status_code;
-        res.add_header("Content-Type", "application/json");
-        res.add_header("Access-Control-Allow-Origin", "*");
-        res.body=db_res.text;
-        //Обновление имени колонки
-        for (auto& col_name : cur_headers) {
-            if (col_name == old_col_name) {
-                col_name = new_col_name;
-                break;
-            }
+        if (db_res.status_code >= 300) {
+            return JsonHandler::createJsonResponse(db_res.status_code, json::parse(db_res.text));
         }
+        res = makeSelect(cur_db, cur_table, cur_headers, cur_types, cur_select);
         return res;
     }
     crow::response makeQuery(const std::string& cur_db, std::string& cur_table,
-        json& cur_headers, json& cur_types, const std::string& req) {
+        json& cur_headers, json& cur_types,std::string& cur_select, const std::string& req) {
         crow::response res;
         json json_request = json::parse(req);
+        CROW_LOG_INFO <<"1";
         if (!json_request.contains("query") || !json_request["query"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
@@ -195,11 +183,13 @@ namespace TableHandler{
         }
         json db_req;
         db_req["database"] = cur_db;
+        CROW_LOG_INFO <<"2";
         db_req["query"] = json_request["query"].get<std::string>();
         cpr::Response db_res = cpr::Post(
             cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
+        CROW_LOG_INFO <<"3";
         res.code = db_res.status_code;
         //установка заголовков
         res.add_header("Content-Type", "application/json");
@@ -207,10 +197,16 @@ namespace TableHandler{
         res.body=db_res.text;
         //Обновление cur_table при надобности:
         json json_response = json::parse(res.body);
+        CROW_LOG_INFO <<"4";
+        CROW_LOG_INFO<<json_response["isSelect"];
         if (json_response["status"] == "success" && json_response["isSelect"].get<bool>() == true) {
+            CROW_LOG_INFO <<"5";
             cur_table = json_response["table_name"].get<std::string>();
             cur_headers = json::array();
             cur_types = json::array();
+            CROW_LOG_INFO <<"6";
+            cur_select = json_request["query"].get<std::string>();
+            CROW_LOG_INFO <<"7";
             for (const auto& item : json_response["header"]) {
                 cur_headers.push_back(item["content"].get<std::string>());
                 cur_types.push_back(item["type"].get<std::string>());
@@ -222,8 +218,8 @@ namespace TableHandler{
         CROW_LOG_INFO<< "Table: " << cur_table;
         return res;
     }
-    crow::response table(const std::string& cur_db, const std::string& cur_table,
-         json& cur_headers, json& cur_types, const std::string& req) {
+    crow::response table(const std::string& cur_db,  std::string& cur_table,
+         json& cur_headers, json& cur_types, std::string& cur_select, const std::string& req) {
         json json_request = json::parse(req);
         if (!json_request.contains("type") || !json_request["type"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
@@ -240,11 +236,11 @@ namespace TableHandler{
         DB_Table_POST type = db_table_post(json_request["type"].get<std::string>());
         switch (type) {
             case DB_Table_POST::RETYPE_COLUMN:
-                return retypeColumn(cur_db, cur_table, cur_headers, cur_types, json_request["data"]);
+                return retypeColumn(cur_db, cur_table, cur_headers, cur_types, cur_select, json_request["data"]);
             case DB_Table_POST::RENAME_COLUMN:
-                return renameColumn(cur_db, cur_table, cur_headers, json_request["data"]);
+                return renameColumn(cur_db, cur_table, cur_headers, cur_types, cur_select, json_request["data"]);
             case DB_Table_POST::REVAL_CELL:
-                return revalCell(cur_db, cur_table, cur_headers, cur_types, json_request["data"]);
+                return revalCell(cur_db, cur_table, cur_headers, cur_types, cur_select, json_request["data"]);
             case DB_Table_POST::ERR:
                 return JsonHandler::createJsonResponse(400, json{
                     {"status", "error"},
@@ -262,5 +258,43 @@ namespace TableHandler{
         long column_number = std::strtol(number_part.data(), &end, 10);
 
         return static_cast<int>(column_number);
+    }
+    crow::response makeSelect(const std::string& cur_db, std::string& cur_table,
+         json& cur_headers, json& cur_types, const std::string& cur_select) {
+        crow::response res;
+        json db_req;
+        db_req["database"] = cur_db;
+        CROW_LOG_INFO <<"2";
+        db_req["query"] = cur_select;
+        cpr::Response db_res = cpr::Post(
+            cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
+            cpr::Body{db_req.dump()},
+            cpr::Header{{"Content-Type", "application/json"}});
+        CROW_LOG_INFO <<"3";
+        res.code = db_res.status_code;
+        //установка заголовков
+        res.add_header("Content-Type", "application/json");
+        res.add_header("Access-Control-Allow-Origin", "*");
+        res.body=db_res.text;
+        //Обновление cur_table при надобности:
+        json json_response = json::parse(res.body);
+        CROW_LOG_INFO <<"4";
+        CROW_LOG_INFO<<json_response["isSelect"];
+        if (json_response["status"] == "success" && json_response["isSelect"].get<bool>() == true) {
+            CROW_LOG_INFO <<"5";
+            cur_table = json_response["table_name"].get<std::string>();
+            cur_headers = json::array();
+            cur_types = json::array();
+            CROW_LOG_INFO <<"6";
+            for (const auto& item : json_response["header"]) {
+                cur_headers.push_back(item["content"].get<std::string>());
+                cur_types.push_back(item["type"].get<std::string>());
+            }
+            CROW_LOG_INFO << "Table changed";
+            CROW_LOG_INFO<< "Header: " << cur_headers;
+            CROW_LOG_INFO<< "Types: " << cur_headers;
+        }
+        CROW_LOG_INFO<< "Table: " << cur_table;
+        return res;
     }
 };
