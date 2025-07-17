@@ -15,7 +15,10 @@ namespace LogHandler {
         crow::response res;
         json db_request;
         cpr::Response db_res = cpr::Get(
-            cpr::Url{std::format("{}/api/history", HttpServer::getServerURL())});
+            cpr::Url{std::format("{}/api/history", HttpServer::getServerURL())},
+            cpr::Parameters{
+                {"database", cur_db}
+                });
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
