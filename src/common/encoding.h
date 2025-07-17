@@ -6,19 +6,42 @@
 #include <stdexcept>
 #include <functional> // For std::hash
 
-// --- 1. The key structure for the table name ---
-// Represents the 12-byte (96-bit) name as two integer types for efficient hashing and comparison.
+/**
+ * @file encoding.h
+ * @brief Defines structures and functions for encoding/decoding table and column names.
+ *
+ * This file provides a specialized 6-bit character encoding to pack names of up to 16
+ * characters into a compact 12-byte (96-bit) key. This key is optimized for fast
+ * comparisons and hashing, making it ideal for use in unordered maps.
+ */
+
+// --- 1. The key structure for table and column names ---
+
+/**
+ * @struct TableNameKey
+ * @brief Represents a 12-byte (96-bit) encoded name.
+ *
+ * The name is split into two integer parts for efficient hashing and comparison.
+ * This structure is used as the key in various in-memory maps (e.g., Catalog).
+ */
 struct TableNameKey {
     uint64_t part1; // First 8 bytes (64 bits)
     uint32_t part2; // Remaining 4 bytes (32 bits)
 
+    /// Equality operator for comparing two keys.
     bool operator==(const TableNameKey& other) const {
         return part1 == other.part1 && part2 == other.part2;
     }
 };
 
 // --- 2. A custom hasher for TableNameKey ---
-// Required for using TableNameKey in std::unordered_map.
+
+/**
+ * @struct KeyHasher
+ * @brief A custom hash function object for TableNameKey.
+ * @details This is required to use TableNameKey as a key in `std::unordered_map`.
+ * It combines the hashes of the two integer parts to produce a single hash value.
+ */
 struct KeyHasher {
     std::size_t operator()(const TableNameKey& k) const {
         const std::size_t h1 = std::hash<uint64_t>{}(k.part1);
@@ -28,10 +51,9 @@ struct KeyHasher {
     }
 };
 
+// --- 3. Encoding/Decoding Logic and Look-Up Tables (LUTs) ---
 
-// --- 3. Encoding/Decoding Logic and LUTs ---
-
-// Provides a 6-bit encoding for a specific set of 64 characters.
+/// A mapping of 64 supported characters to their 6-bit codes.
 constexpr std::array<std::pair<char, uint8_t>, 64> ENCODING_MAP = {{
     {'_', 0}, {'B', 1}, {'C', 2}, {'D', 3}, {'E', 4}, {'F', 5}, {'G', 6}, {'H', 7},
     {'I', 8}, {'J', 9}, {'K', 10}, {'L', 11}, {'M', 12}, {'N', 13}, {'O', 14}, {'P', 15},
@@ -43,7 +65,7 @@ constexpr std::array<std::pair<char, uint8_t>, 64> ENCODING_MAP = {{
     {'4', 56}, {'5', 57}, {'6', 58}, {'7', 59}, {'8', 60}, {'9', 61}, {'A', 62}, {'-', 63}
 }};
 
-// Creates an encoding LUT (char -> 6-bit code).
+/// Creates an encoding LUT (char -> 6-bit code) at compile time.
 constexpr auto createEncodingLut() {
     std::array<uint8_t, 128> lut{};
     lut.fill(255); // 255 indicates an invalid character.
@@ -53,7 +75,7 @@ constexpr auto createEncodingLut() {
     return lut;
 }
 
-// Creates a decoding LUT (6-bit code -> char).
+/// Creates a decoding LUT (6-bit code -> char) at compile time.
 constexpr auto createDecodingLut() {
     std::array<char, 64> lut{};
     for (const auto& pair : ENCODING_MAP) {
@@ -62,18 +84,22 @@ constexpr auto createDecodingLut() {
     return lut;
 }
 
-// Global, compile-time generated LUTs.
-// constexpr makes them implicitly inline, safe to define in a header.
+/// Global, compile-time generated LUT for encoding.
 constexpr auto ENCODING_LUT = createEncodingLut();
+/// Global, compile-time generated LUT for decoding.
 constexpr auto DECODING_LUT = createDecodingLut();
 
 
 // --- 4. Public Helper Functions ---
 
-// Overload the function for validation with a dynamic length
+/**
+ * @brief Validates a table or column name against naming rules and a dynamic length.
+ * @param name The name to validate.
+ * @param max_length The maximum allowed length for the name.
+ * @throws std::invalid_argument If the name is empty, too long, or contains invalid characters.
+ */
 inline void validateTableName(const std::string& name, uint8_t max_length) {
     if (name.empty()) throw std::invalid_argument("Table/Column name cannot be empty.");
-    // Use the passed max_length for the check
     if (name.length() > max_length) {
         throw std::invalid_argument("Table/Column name exceeds maximum length of " + std::to_string(max_length) + " characters.");
     }
@@ -87,12 +113,20 @@ inline void validateTableName(const std::string& name, uint8_t max_length) {
     }
 }
 
-// Keep the original for backwards compatibility or for the fixed-size Catalog
+/**
+ * @brief Validates a table or column name with a default max length of 16.
+ * @param name The name to validate.
+ * @throws std::invalid_argument If the name violates any rules.
+ */
 inline void validateTableName(const std::string& name) {
-    validateTableName(name, 16); // Default to 16
+    validateTableName(name, 16); // Default to 16 for catalog-level names.
 }
 
-// Encodes a string into a 12-byte key.
+/**
+ * @brief Encodes a string into a 12-byte TableNameKey using a 6-bit packing scheme.
+ * @param s The string to encode (max 16 chars).
+ * @return The resulting 12-byte key.
+ */
 inline TableNameKey stringToKey(const std::string& s) {
     std::array<uint8_t, 12> buffer{};
     int bit_pos = 0;
@@ -100,50 +134,57 @@ inline TableNameKey stringToKey(const std::string& s) {
         uint8_t code = ENCODING_LUT[static_cast<size_t>(c)];
         int byte_idx = bit_pos / 8;
         int bit_in_byte = bit_pos % 8;
+        
+        // Write the 6-bit code into the buffer, potentially spanning two bytes.
         buffer[byte_idx] |= (code << bit_in_byte);
-        if (bit_in_byte > 2) {
+        if (bit_in_byte > 2) { // If the code crosses a byte boundary
             buffer[byte_idx + 1] |= (code >> (8 - bit_in_byte));
         }
         bit_pos += 6;
     }
+    // Reinterpret the byte buffer as a TableNameKey struct.
     return *reinterpret_cast<TableNameKey*>(buffer.data());
 }
 
-// Decodes a 12-byte key back into a string.
+/**
+ * @brief Decodes a 12-byte TableNameKey back into its original string representation.
+ * @param key The key to decode.
+ * @return The decoded string.
+ */
 inline std::string keyToString(const TableNameKey& key) {
     const auto* bytes = reinterpret_cast<const uint8_t*>(&key);
     std::string result;
     result.reserve(16);
 
+    // Iterate through the 96 bits of the key, extracting one 6-bit code at a time.
     for (int bit_pos = 0; bit_pos < 96; bit_pos += 6) { // 16 chars * 6 bits = 96 bits
         int byte_idx = bit_pos / 8;
         int bit_in_byte = bit_pos % 8;
 
-        uint16_t temp_window; // Use a 16-bit integer to safely read across byte boundary
-
+        // Use a 16-bit integer to create a "window" for safely reading a 6-bit code
+        // that might span across a byte boundary.
+        uint16_t temp_window; 
         if (byte_idx >= 11) {
-            // We are at the last byte. Only read that single byte into our window.
+            // We are at the last byte. Only read that single byte.
             temp_window = bytes[byte_idx];
         } else {
             // Safely copy 2 bytes (16 bits) into our window.
-            // The compiler will often optimize this to a single register load.
             memcpy(&temp_window, &bytes[byte_idx], sizeof(uint16_t));
         }
 
         // Shift the window to align our 6 bits to the right, then mask them.
-        // The mask 0x3F (binary 00111111) isolates the 6 bits.
-        uint8_t code = (temp_window >> bit_in_byte) & 0x3F;
+        uint8_t code = (temp_window >> bit_in_byte) & 0x3F; // 0x3F is a mask for 6 bits (00111111).
 
         // Decode the 6-bit code back to a character and append it.
         result += DECODING_LUT[code];
     }
     
-    // After decoding, the string may be padded with trailing '_' characters
-    // because stringToKey fills the unused part of the key with zero-bits.
-    // We need to trim this padding.
+    // After decoding, the string may have trailing '_' padding characters because
+    // unused bits in the key are zero, which decodes to '_'. We must trim them.
     size_t last_char_pos = result.find_last_not_of('_');
 
     if (last_char_pos == std::string::npos) {
+        // This case implies the key was all zeros, which is an invalid state.
         throw std::runtime_error("Error in decoding key, it's empty");
     }
 

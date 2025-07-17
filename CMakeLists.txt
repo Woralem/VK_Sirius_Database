@@ -15,6 +15,10 @@ add_library(storage_engine STATIC
     src/physical/file_manager.cpp
     src/physical/catalog.cpp
     src/physical/table.cpp # Make sure table.cpp is here
+    src/physical/block_data_io.cpp
+    src/physical/column_manager.cpp
+    src/physical/heap_io.cpp
+    src/physical/space_manager_io.cpp
     # Add other .cpp files as needed
     # src/physical/metadata_io.cpp
     # ...

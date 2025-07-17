@@ -36,8 +36,8 @@ Catalog::Catalog(const std::string& db_path)
     meta_file_.open(meta_db_path_, std::ios::in | std::ios::out | std::ios::binary);
 
     // Set streams to throw exceptions on failure for robust error handling.
-    manager_file_.exceptions(std::ios::failbit | std::ios::badbit);
-    meta_file_.exceptions(std::ios::failbit | std::ios::badbit);
+    // manager_file_.exceptions(std::ios::failbit | std::ios::badbit);
+    // meta_file_.exceptions(std::ios::failbit | std::ios::badbit);
 
     if (!manager_file_.is_open()) throw std::runtime_error("FATAL: Could not open manager.db stream.");
     if (!meta_file_.is_open()) throw std::runtime_error("FATAL: Could not open meta.mt stream.");
@@ -49,8 +49,14 @@ Catalog::Catalog(const std::string& db_path)
 // Destructor ensures persistent file streams are properly closed, flushing any
 // buffered writes to disk.
 Catalog::~Catalog() {
-    if (manager_file_.is_open()) manager_file_.close();
-    if (meta_file_.is_open()) meta_file_.close();
+     if (manager_file_.is_open()) {
+        manager_file_.flush(); // Явно сбрасываем буферы
+        manager_file_.close();
+    }
+    if (meta_file_.is_open()) {
+        meta_file_.flush();
+        meta_file_.close();
+    }
 }
 
 //================================================================================
@@ -61,6 +67,7 @@ Catalog::~Catalog() {
 // persisting the name-to-link mapping, and delegating to the Table class to create
 // the physical files and column definitions.
 void Catalog::createTable(const std::string& table_name, const std::vector<ColumnDef>& columns, const Options& options) {
+    std::lock_guard<std::mutex> lock(catalog_mutex_);
     validateTableName(table_name);
     TableNameKey key = stringToKey(table_name);
 
@@ -105,6 +112,7 @@ void Catalog::createTable(const std::string& table_name, const std::vector<Colum
 
 // Drops a table logically (marking it deleted) and physically (deleting its files).
 void Catalog::dropTable(const std::string& table_name) {
+    std::lock_guard<std::mutex> lock(catalog_mutex_);
     validateTableName(table_name);
     TableNameKey key = stringToKey(table_name);
     auto it = table_links_.find(key);
@@ -148,6 +156,7 @@ void Catalog::dropTable(const std::string& table_name) {
 
 // IN-PLACE, ROBUST, AND SIMPLE renameTable in catalog.cpp
 void Catalog::renameTable(const std::string& old_name, const std::string& new_name) {
+    std::lock_guard<std::mutex> lock(catalog_mutex_);
     validateTableName(old_name);
     validateTableName(new_name);
 
@@ -187,6 +196,7 @@ void Catalog::renameTable(const std::string& old_name, const std::string& new_na
 
 // Retrieves the link for a given table name from the fast in-memory map.
 bool Catalog::getTableLink(const std::string& table_name, uint16_t& link_out) const {
+    std::lock_guard<std::mutex> lock(catalog_mutex_);
     if (table_name.length() > 16) return false;
 
     TableNameKey key = stringToKey(table_name);

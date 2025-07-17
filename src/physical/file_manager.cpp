@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 // Checks if a file or directory exists at the specified path.
-// Marked noexcept as filesystem errors are not expected in normal operation
+// This is marked noexcept as filesystem errors are not expected in normal operation,
 // and returning false is a safe default.
 bool FileManager::fileExists(const std::filesystem::path& path) const noexcept {
     return std::filesystem::exists(path);
@@ -12,7 +12,8 @@ bool FileManager::fileExists(const std::filesystem::path& path) const noexcept {
 // Creates an empty file at the specified path if one does not already exist.
 void FileManager::createFile(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
-        // Using std::ofstream is a simple and effective way to create an empty file.
+        // Using std::ofstream is a simple and cross-platform way to create an empty file.
+        // The file stream is closed immediately when 'file' goes out of scope.
         std::ofstream file(path, std::ios::binary);
         if (!file.is_open()) {
             // Failure to create a file is considered a critical, unrecoverable error.
@@ -24,6 +25,7 @@ void FileManager::createFile(const std::filesystem::path& path) {
 // Creates a directory at the specified path if one does not already exist.
 void FileManager::createDirectory(const std::filesystem::path& path) {
     if (!fileExists(path)) {
+        // std::filesystem::create_directories also creates any non-existent parent directories.
         std::filesystem::create_directories(path);
     }
 }

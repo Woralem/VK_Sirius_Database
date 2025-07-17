@@ -1,41 +1,81 @@
-// --- FINAL, CORRECTED types.h ---
 #pragma once
 
 #include <string>
 #include <vector>
 #include <array>
+#include <variant>
 #include <cstdint>
+#include <string_view>
+#include <stdexcept>
 #include <utility>
+#include <map>
 
-// --- Data Structures ---
-// These are common data transfer structures used across the engine.
+/**
+ * @file types.h
+ * @brief Defines fundamental data structures and type definitions used throughout the storage engine.
+ *
+ * This file contains the core data transfer objects (DTOs) like `Value`, `ColumnDef`,
+ * and `Options`, as well as the central `DataType` enum and its related conversion utilities.
+ */
 
+
+// --- Value Definition ---
+
+/**
+ * @using ValueType
+ * @brief A type-safe union to hold any possible data value.
+ *
+ * `std::variant` is used to represent a value, which can be a number, string, boolean,
+ * or a special state representing SQL NULL (`std::monostate`).
+ */
+using ValueType = std::variant<
+    std::monostate, // For NULL values
+    int64_t,        // For TinyInt, SmallInt, Integer, BigInt
+    double,         // For Float, Double
+    bool,           // For Boolean
+    std::string     // For VarChar, Text, etc.
+>;
+
+/// A wrapper struct for a `ValueType`, used for passing data.
+struct Value {
+    ValueType data;
+};
+
+/// Defines the properties of a column, used for table creation and schema management.
 struct ColumnDef {
     std::string name;
-    // DataType is forward-declared below, so we use it here.
+    /// The data type of the column.
     enum class DataType : std::uint8_t; 
     DataType type;
     bool primeryKey = false;
     bool notNull = false;
 };
 
+/// A structure for passing optional configuration when creating a table.
 struct Options {
     std::vector<std::string> additionalTypes = {};
-    int maxColumnLemgth = 16;
+    // Use unsigned types to prevent negative inputs from wrapping around.
+    uint8_t maxColumnLemgth = 16; 
     std::vector<std::string> additionalChars = {};
-    int maxStringLength = 16; // This likely needs to be an enum or code
-    int gcFrequency = 7; // Frequency of garbage collection in days
+    uint8_t maxStringLength = 0; // Use a code: 0=16, 1=32, 2=64, 3=255
+    uint16_t gcFrequency = 7; 
 };
-
-struct Value { /*...*/ }; // Can use std::variant
 
 
 // --- DataType Enum Definition ---
 
-// Defines all supported data types, each with a unique byte code.
-// The `std::uint8_t` base ensures a compact, single-byte representation.
+/**
+ * @enum ColumnDef::DataType
+ * @brief Defines all supported data types, each with a unique byte code.
+ *
+ * The enum uses `std::uint8_t` as its underlying type for a compact, single-byte
+ * on-disk representation. A convention is used where the most significant bit (MSB)
+ * indicates the storage type:
+ * - MSB = 0: Fixed-size type (e.g., INTEGER, DOUBLE).
+ * - MSB = 1: Variable-size type (e.g., VARCHAR, TEXT), which requires heap storage.
+ */
 enum class ColumnDef::DataType : std::uint8_t {
-    // A sentinel value used for invalid or unrecognized type codes.
+    /// A sentinel value used for invalid or unrecognized type codes.
     Unknown   = 255,
 
     // --- Fixed-Size Types (MSB = 0) ---
@@ -67,17 +107,15 @@ enum class ColumnDef::DataType : std::uint8_t {
     JsonB     = 0b10001000,
     PhoneNumber = 0b10001001,
     EmailAddress = 0b10001010,
-
-    // Added from your original file
-    Address = 0b10001011,
-    Telegram = 0b10001100
+    Address   = 0b10001011,
+    Telegram  = 0b10001100
 };
 
 
 // --- Compile-time Lookup Table (LUT) ---
 // This allows for O(1) conversion from a byte code to a DataType.
-// Since these are `constexpr`, they are implicitly `inline` and safe for a header.
 
+/// Generates a lookup table at compile time to map a raw byte to a DataType.
 constexpr std::array<ColumnDef::DataType, 256> CreateTypeLut() {
     std::array<ColumnDef::DataType, 256> lut{};
     lut.fill(ColumnDef::DataType::Unknown);
@@ -114,4 +152,55 @@ constexpr std::array<ColumnDef::DataType, 256> CreateTypeLut() {
     return lut;
 }
 
+/// A global, compile-time generated lookup table for byte-to-DataType conversion.
 constexpr auto TYPE_LUT = CreateTypeLut();
+
+/**
+ * @brief Converts a user-provided type string into the internal DataType enum.
+ * @details This function is used to parse DDL commands like `CREATE TABLE` and `ALTER TABLE`.
+ * It uses a static map for efficient, case-sensitive lookups.
+ * @param type_str A string_view of the type name (e.g., "INTEGER", "VARCHAR").
+ * @return The corresponding ColumnDef::DataType enum value.
+ * @throws std::invalid_argument if the type string is not recognized.
+ */
+inline ColumnDef::DataType stringToDataType(std::string_view type_str) {
+    // A static map provides an efficient, one-time-initialized lookup.
+    // Using string_view for the key avoids string copies during lookup.
+    static const std::map<std::string_view, ColumnDef::DataType> type_map = {
+        {"NULL", ColumnDef::DataType::Null},
+        {"TINYINT", ColumnDef::DataType::TinyInt},
+        {"SMALLINT", ColumnDef::DataType::SmallInt},
+        {"INTEGER", ColumnDef::DataType::Integer},
+        {"BIGINT", ColumnDef::DataType::BigInt},
+        {"UTINYINT", ColumnDef::DataType::UTinyInt},
+        {"USMALLINT", ColumnDef::DataType::USmallInt},
+        {"UINTEGER", ColumnDef::DataType::UInteger},
+        {"UBIGINT", ColumnDef::DataType::UBigInt},
+        {"FLOAT", ColumnDef::DataType::Float},
+        {"DOUBLE", ColumnDef::DataType::Double},
+        {"DATE", ColumnDef::DataType::Date},
+        {"TIME", ColumnDef::DataType::Time},
+        {"TIMESTAMP", ColumnDef::DataType::Timestamp},
+        {"BOOLEAN", ColumnDef::DataType::Boolean},
+        {"DECIMAL", ColumnDef::DataType::Decimal},
+        {"VARCHAR", ColumnDef::DataType::VarChar},
+        {"TEXT", ColumnDef::DataType::Text},
+        {"VARBINARY", ColumnDef::DataType::VarBinary},
+        {"BLOB", ColumnDef::DataType::Blob},
+        {"UUID", ColumnDef::DataType::Uuid},
+        {"ARRAY", ColumnDef::DataType::Array},
+        {"JSON", ColumnDef::DataType::Json},
+        {"JSONB", ColumnDef::DataType::JsonB},
+        {"PHONENUMBER", ColumnDef::DataType::PhoneNumber},
+        {"EMAILADDRESS", ColumnDef::DataType::EmailAddress},
+        {"ADDRESS", ColumnDef::DataType::Address},
+        {"TELEGRAM", ColumnDef::DataType::Telegram}
+    };
+    
+    auto it = type_map.find(type_str);
+    if (it != type_map.end()) {
+        return it->second;
+    }
+    // Provide a clear error message if the type is not found.
+    throw std::invalid_argument(std::string("Unknown data type '") + std::string(type_str) + "'");
+}

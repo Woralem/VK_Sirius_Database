@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <fstream>
 #include "physical/table.h"
+#include <mutex>
 
 // Forward declaration to avoid including the full encoding.h header.
 // This tells the compiler that these types exist, improving compile times.
@@ -40,6 +41,8 @@ private:
 
     std::fstream manager_file_;
     std::fstream meta_file_;
+    
+    mutable std::mutex catalog_mutex_;
 
     // The in-memory cache of the manager.db file.
     // The full definitions of TableNameKey and KeyHasher are needed in catalog.cpp,
