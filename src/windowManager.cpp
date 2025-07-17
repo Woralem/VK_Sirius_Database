@@ -17,6 +17,7 @@ WindowManager::WindowManager() {
 //Получить все пары ключ-значение json строкой
 crow::response WindowManager::get() {
     std::lock_guard<std::mutex> lock(mtx);
+    CROW_LOG_INFO << "Current window: " << cur_window;
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
         {"data", WindowManager::manager}
@@ -34,6 +35,7 @@ crow::response WindowManager::get(const std::string& req) {
     }
     std::string id = json_request["id"].get<std::string>();
     std::lock_guard<std::mutex> lock(mtx);
+    CROW_LOG_INFO << "Current window: " << cur_window;
     if (!WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -56,6 +58,7 @@ crow::response WindowManager::remove() {
     std::string tmp = manager[cur_window];
     manager.clear();
     manager[cur_window] = tmp;
+    CROW_LOG_INFO << "Current window: " << cur_window;
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"}
     });
@@ -84,6 +87,7 @@ crow::response WindowManager::remove(const std::string& req) {
     } else {
         cur_window = "File_1";
     }
+    CROW_LOG_INFO << "Current window: " << cur_window;
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
         {"currentWindow", cur_window}
@@ -100,8 +104,10 @@ crow::response WindowManager::add(const std::string& req) {
             });
     }
     std::lock_guard<std::mutex> lock(mtx);
+    CROW_LOG_INFO << "Current window: " << cur_window;
     std::string id = WindowManager::generate_next();
     WindowManager::cur_window = id;
+    CROW_LOG_INFO << "New window: " << cur_window;
     if (WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -125,6 +131,7 @@ crow::response WindowManager::changeWindow(const std::string& req) {
     }
     std::string id = json_request["id"].get<std::string>();
     std::lock_guard<std::mutex> lock(mtx);
+    CROW_LOG_INFO << "Current window: " << cur_window;
     if (!WindowManager::manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
@@ -132,7 +139,8 @@ crow::response WindowManager::changeWindow(const std::string& req) {
             });
     }
     std::string oldWindow = WindowManager::cur_window;
-    WindowManager::cur_window = id;
+    cur_window = id;
+    CROW_LOG_INFO << "New window: " << cur_window;
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
         {"newWindow", id},
@@ -145,9 +153,11 @@ crow::response WindowManager::changeWindow(const std::string& req) {
 crow::response WindowManager::getList () {
     json windows = json::array();
     std::lock_guard<std::mutex> lock(mtx);
-    for (auto& [id, window] : WindowManager::manager) {
+    CROW_LOG_INFO << "Current window: " << cur_window;
+    for (auto& [id, window] :manager) {
         windows.push_back(id);
     }
+    CROW_LOG_INFO << "Current windows: " << (json)(manager);
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
         {"data", windows}
@@ -157,7 +167,8 @@ crow::response WindowManager::getList () {
 //получить информацию о текущем окне
 crow::response WindowManager::getCurrent() {
     std::lock_guard<std::mutex> lock(mtx);
-    if (cur_window == "File_1") {
+    CROW_LOG_INFO << "Current window: " << cur_window;
+    if (cur_window == "") {
         return JsonHandler::createJsonResponse(400, json{
             {"status", "error"},
             {"error", "There are no active window"}
@@ -165,8 +176,8 @@ crow::response WindowManager::getCurrent() {
     }
     return JsonHandler::createJsonResponse(200, json{
             {"status", "success"},
-            {"id", WindowManager::cur_window },
-            {"data", WindowManager::manager[WindowManager::cur_window]}
+            {"id", cur_window },
+            {"data", manager[cur_window]}
     });
 }
 
@@ -181,6 +192,7 @@ crow::response WindowManager:: update(const std::string& req) {
     }
     std::lock_guard<std::mutex> lock(mtx);
     std::string id = cur_window;
+    CROW_LOG_INFO << "Current window: " << cur_window;
     if (id == "") {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},

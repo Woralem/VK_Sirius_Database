@@ -2,7 +2,7 @@
 #include <crow.h>
 #include <string>
 #include <cpr/cpr.h>
-
+#include <algorithm>
 #include "database-handler.cpp.h"
 #include "http-server.h"
 #include "json-handler.h"
@@ -94,7 +94,12 @@ namespace DBhandler {
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
-        res.body=db_res.text;
+        json dblist = json::parse(db_res.text);
+        std::vector<std::string> vec;
+        for (const auto& item : dblist["database"]) {
+            vec.push_back(item.get<std::string>());
+        }
+        std::sort(vec.begin(), vec.end());
         return res;
     }
     crow::response DB(std:: string& cur_db, const std::string& req) {
