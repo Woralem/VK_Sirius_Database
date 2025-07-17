@@ -95,12 +95,14 @@ namespace DBhandler {
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
         json dblist = json::parse(db_res.text);
+
         std::vector<std::string> vec;
-        for (const auto& item : dblist["database"]) {
+        for (const auto& item : dblist["databases"]) {
             vec.push_back(item.get<std::string>());
         }
         std::sort(vec.begin(), vec.end());
-        res.body = ((json)(vec)).dump();
+
+        res.body = json{{"databases", vec}}.dump();
         return res;
     }
     crow::response DB(std:: string& cur_db, const std::string& req) {
