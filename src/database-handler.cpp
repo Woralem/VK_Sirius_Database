@@ -100,7 +100,7 @@ namespace DBhandler {
             vec.push_back(item.get<std::string>());
         }
         std::sort(vec.begin(), vec.end());
-        return res;
+        res.body = ((json)(vec)).dump();
     }
     crow::response DB(std:: string& cur_db, const std::string& req) {
         json json_request = json::parse(req);
