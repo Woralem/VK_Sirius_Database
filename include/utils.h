@@ -6,6 +6,7 @@
 #include <ranges>
 #include <concepts>
 #include <type_traits>
+#include <optional>
 
 namespace utils {
 
@@ -42,6 +43,144 @@ constexpr void smart_erase_if(Container& container, Predicate pred) {
 template<typename Container, typename Value>
 constexpr void smart_erase(Container& container, const Value& value) {
     std::erase(container, value);
+}
+
+// UTF-8 validation functions
+[[nodiscard]] inline bool isValidUtf8(std::string_view str) {
+    size_t i = 0;
+    while (i < str.length()) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+
+        if (c <= 0x7F) {
+            // ASCII character
+            i++;
+        } else if ((c & 0xE0) == 0xC0) {
+            // 2-byte sequence
+            if (i + 1 >= str.length()) return false;
+            if ((static_cast<unsigned char>(str[i + 1]) & 0xC0) != 0x80) return false;
+            // Check for overlong encoding
+            if ((c & 0x1E) == 0) return false;
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            // 3-byte sequence
+            if (i + 2 >= str.length()) return false;
+            if ((static_cast<unsigned char>(str[i + 1]) & 0xC0) != 0x80) return false;
+            if ((static_cast<unsigned char>(str[i + 2]) & 0xC0) != 0x80) return false;
+            // Check for overlong encoding
+            if (c == 0xE0 && (static_cast<unsigned char>(str[i + 1]) & 0x20) == 0) return false;
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            // 4-byte sequence
+            if (i + 3 >= str.length()) return false;
+            if ((static_cast<unsigned char>(str[i + 1]) & 0xC0) != 0x80) return false;
+            if ((static_cast<unsigned char>(str[i + 2]) & 0xC0) != 0x80) return false;
+            if ((static_cast<unsigned char>(str[i + 3]) & 0xC0) != 0x80) return false;
+            // Check for overlong encoding
+            if (c == 0xF0 && (static_cast<unsigned char>(str[i + 1]) & 0x30) == 0) return false;
+            // Check for values > U+10FFFF
+            if (c > 0xF4 || (c == 0xF4 && static_cast<unsigned char>(str[i + 1]) > 0x8F)) return false;
+            i += 4;
+        } else {
+            // Invalid UTF-8 start byte
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] inline std::optional<size_t> findInvalidUtf8Byte(std::string_view str) {
+    size_t i = 0;
+    while (i < str.length()) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+
+        if (c <= 0x7F) {
+            i++;
+        } else if ((c & 0xE0) == 0xC0) {
+            if (i + 1 >= str.length() || (static_cast<unsigned char>(str[i + 1]) & 0xC0) != 0x80) {
+                return i;
+            }
+            if ((c & 0x1E) == 0) return i;
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            if (i + 2 >= str.length() ||
+                (static_cast<unsigned char>(str[i + 1]) & 0xC0) != 0x80 ||
+                (static_cast<unsigned char>(str[i + 2]) & 0xC0) != 0x80) {
+                return i;
+            }
+            if (c == 0xE0 && (static_cast<unsigned char>(str[i + 1]) & 0x20) == 0) return i;
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            if (i + 3 >= str.length() ||
+                (static_cast<unsigned char>(str[i + 1]) & 0xC0) != 0x80 ||
+                (static_cast<unsigned char>(str[i + 2]) & 0xC0) != 0x80 ||
+                (static_cast<unsigned char>(str[i + 3]) & 0xC0) != 0x80) {
+                return i;
+            }
+            if (c == 0xF0 && (static_cast<unsigned char>(str[i + 1]) & 0x30) == 0) return i;
+            if (c > 0xF4 || (c == 0xF4 && static_cast<unsigned char>(str[i + 1]) > 0x8F)) return i;
+            i += 4;
+        } else {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] inline std::string sanitizeUtf8(std::string_view str) {
+    std::string result;
+    result.reserve(str.length());
+
+    size_t i = 0;
+    while (i < str.length()) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+
+        if (c <= 0x7F) {
+            result.push_back(str[i]);
+            i++;
+        } else if ((c & 0xE0) == 0xC0) {
+            if (i + 1 < str.length() && (static_cast<unsigned char>(str[i + 1]) & 0xC0) == 0x80 && (c & 0x1E) != 0) {
+                result.push_back(str[i]);
+                result.push_back(str[i + 1]);
+                i += 2;
+            } else {
+                result.push_back('?');
+                i++;
+            }
+        } else if ((c & 0xF0) == 0xE0) {
+            if (i + 2 < str.length() &&
+                (static_cast<unsigned char>(str[i + 1]) & 0xC0) == 0x80 &&
+                (static_cast<unsigned char>(str[i + 2]) & 0xC0) == 0x80 &&
+                !(c == 0xE0 && (static_cast<unsigned char>(str[i + 1]) & 0x20) == 0)) {
+                result.push_back(str[i]);
+                result.push_back(str[i + 1]);
+                result.push_back(str[i + 2]);
+                i += 3;
+            } else {
+                result.push_back('?');
+                i++;
+            }
+        } else if ((c & 0xF8) == 0xF0) {
+            if (i + 3 < str.length() &&
+                (static_cast<unsigned char>(str[i + 1]) & 0xC0) == 0x80 &&
+                (static_cast<unsigned char>(str[i + 2]) & 0xC0) == 0x80 &&
+                (static_cast<unsigned char>(str[i + 3]) & 0xC0) == 0x80 &&
+                !(c == 0xF0 && (static_cast<unsigned char>(str[i + 1]) & 0x30) == 0) &&
+                (c < 0xF4 || (c == 0xF4 && static_cast<unsigned char>(str[i + 1]) <= 0x8F))) {
+                result.push_back(str[i]);
+                result.push_back(str[i + 1]);
+                result.push_back(str[i + 2]);
+                result.push_back(str[i + 3]);
+                i += 4;
+            } else {
+                result.push_back('?');
+                i++;
+            }
+        } else {
+            result.push_back('?');
+            i++;
+        }
+    }
+    return result;
 }
 
 class StringBuilder {

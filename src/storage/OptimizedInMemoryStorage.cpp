@@ -8,6 +8,11 @@ bool OptimizedInMemoryStorage::validateColumnName(std::string_view name, const T
     if (name.empty() || name.length() > options.maxColumnNameLength) {
         return false;
     }
+
+    if (!utils::isValidUtf8(name)) {
+        return false;
+    }
+
     for (char c : name) {
         if (!std::isalnum(c) && c != '_' && !options.additionalNameChars.contains(c)) {
             return false;
@@ -69,7 +74,6 @@ bool OptimizedInMemoryStorage::validateValueForColumn(const Value& value, const 
     return type_ok;
 }
 
-// Остальной код остается без изменений...
 bool OptimizedInMemoryStorage::isValidInteger(std::string_view str) const {
     if (str.empty()) return false;
     static const std::regex intRegex(R"(^-?\d+$)");
@@ -293,9 +297,26 @@ bool OptimizedInMemoryStorage::insertRow(const std::string& tableName, const std
             return false;
         }
 
-        if (std::holds_alternative<std::string>(value) &&
-            std::get<std::string>(value).length() > table.options.maxStringLength) {
-            return false;
+        if (std::holds_alternative<std::string>(value)) {
+            const std::string& strValue = std::get<std::string>(value);
+
+            if (!utils::isValidUtf8(strValue)) {
+                auto invalidBytePos = utils::findInvalidUtf8Byte(strValue);
+                if (invalidBytePos.has_value()) {
+                    unsigned char invalidByte = static_cast<unsigned char>(strValue[*invalidBytePos]);
+                    std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m Column '{}' contains invalid UTF-8 byte at position {}: 0x{:02X}\n",
+                                           colDef.name, *invalidBytePos, invalidByte);
+                } else {
+                    std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m Column '{}' contains invalid UTF-8\n", colDef.name);
+                }
+                return false;
+            }
+
+            if (strValue.length() > table.options.maxStringLength) {
+                std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m String in column '{}' exceeds maximum length of {}\n",
+                                       colDef.name, table.options.maxStringLength);
+                return false;
+            }
         }
 
         if (colDef.primaryKey && !std::holds_alternative<std::monostate>(value)) {
@@ -352,11 +373,30 @@ int OptimizedInMemoryStorage::updateRows(const std::string& tableName,
                 valid = false;
                 break;
             }
-            if (std::holds_alternative<std::string>(value) &&
-                std::get<std::string>(value).length() > table.options.maxStringLength) {
-                valid = false;
-                break;
+
+            if (std::holds_alternative<std::string>(value)) {
+                const std::string& strValue = std::get<std::string>(value);
+                if (!utils::isValidUtf8(strValue)) {
+                    auto invalidBytePos = utils::findInvalidUtf8Byte(strValue);
+                    if (invalidBytePos.has_value()) {
+                        unsigned char invalidByte = static_cast<unsigned char>(strValue[*invalidBytePos]);
+                        std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m Column '{}' update contains invalid UTF-8 byte at position {}: 0x{:02X}\n",
+                                               colName, *invalidBytePos, invalidByte);
+                    } else {
+                        std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m Column '{}' update contains invalid UTF-8\n", colName);
+                    }
+                    valid = false;
+                    break;
+                }
+
+                if (strValue.length() > table.options.maxStringLength) {
+                    std::cout << std::format("\033[91m[VALIDATION ERROR]\033[0m String in column '{}' exceeds maximum length of {}\n",
+                                           colName, table.options.maxStringLength);
+                    valid = false;
+                    break;
+                }
             }
+
             if (colDef->primaryKey) {
                 json tempJson;
                 setJsonValue(tempJson, colName, value);
@@ -406,21 +446,16 @@ int OptimizedInMemoryStorage::deleteRows(const std::string& tableName, std::func
 
     int deletedCount = toDeleteIndices.size();
 
-    // Создаем новый массив данных, исключая удаленные строки.
-    // Это проще и безопаснее, чем удаление на месте со сдвигом.
     json newData = json::array();
     newData.get_ref<json::array_t&>().reserve(table.data.size() - deletedCount);
 
-    // Перестраиваем индексы
     for(auto& pair : table.indexes) {
         pair.second.clear();
     }
 
     size_t newIndex = 0;
     for(size_t i = 0; i < table.data.size(); ++i) {
-        // Проверяем, нужно ли удалять этот индекс
         if(std::ranges::find(toDeleteIndices, i) == toDeleteIndices.end()) {
-            // Если не удаляем, копируем строку и обновляем индексы
             auto& row = table.data[i];
             newData.push_back(row);
             for(auto& [colName, index] : table.indexes) {
@@ -589,7 +624,6 @@ bool OptimizedInMemoryStorage::renameColumn(const std::string& tableName,
 
     if (!validateColumnName(newColumnName, table.options)) return false;
 
-    // Используем ranges для поиска и обновления
     auto col_it = std::ranges::find_if(table.schema, [&oldColumnName](auto& col) {
         return col.name == oldColumnName;
     });
@@ -598,7 +632,6 @@ bool OptimizedInMemoryStorage::renameColumn(const std::string& tableName,
         col_it->name = newColumnName;
     }
 
-    // Обновляем данные
     for (auto& row : table.data) {
         if (!row.is_null() && row.contains(oldColumnName)) {
             row[newColumnName] = row[oldColumnName];
@@ -606,7 +639,6 @@ bool OptimizedInMemoryStorage::renameColumn(const std::string& tableName,
         }
     }
 
-    // Обновляем индексы
     if (table.indexes.contains(oldColumnName)) {
         auto node = table.indexes.extract(oldColumnName);
         node.key() = newColumnName;
@@ -694,7 +726,6 @@ bool OptimizedInMemoryStorage::addColumn(const std::string& tableName, const Col
                             columnDef->name, table.data.size());
     return true;
 }
-
 
 bool OptimizedInMemoryStorage::alterColumnType(const std::string& tableName,
                                                const std::string& columnName,

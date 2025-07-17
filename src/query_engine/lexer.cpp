@@ -1,4 +1,5 @@
 #include "query_engine/lexer.h"
+#include "utils.h"
 #include <cctype>
 #include <algorithm>
 #include <limits>
@@ -222,6 +223,10 @@ Token Lexer::identifier() {
 
     std::string_view text(&source[start], current - start);
 
+    if (!utils::isValidUtf8(text)) {
+        return errorToken("Invalid UTF-8 in identifier");
+    }
+
     size_t len = std::min(text.length(), upperBuffer.size() - 1);
     for (size_t i = 0; i < len; ++i) {
         upperBuffer[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[i])));
@@ -306,6 +311,16 @@ Token Lexer::string() {
     }
 
     advance();
+
+    if (!utils::isValidUtf8(value)) {
+        auto invalidBytePos = utils::findInvalidUtf8Byte(value);
+        if (invalidBytePos.has_value()) {
+            unsigned char invalidByte = static_cast<unsigned char>(value[*invalidBytePos]);
+            return errorToken(std::format("Invalid UTF-8 byte in string literal at position {}: 0x{:02X}",
+                                        *invalidBytePos, invalidByte));
+        }
+        return errorToken("Invalid UTF-8 in string literal");
+    }
 
     std::string_view lexeme(&source[startLexeme], current - startLexeme);
     Token token = makeToken(TokenType::STRING_LITERAL, lexeme);

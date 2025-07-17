@@ -1,4 +1,5 @@
 #include "utils/activity_logger.h"
+#include "utils.h"
 #include <algorithm>
 #include <format>
 #include <regex>
@@ -120,17 +121,18 @@ void ActivityLogger::logQuery(const std::string& database, const std::string& qu
     LogEntry entry;
     entry.id = nextId++;
     entry.timestamp = std::chrono::system_clock::now();
-    entry.database = database;
-    entry.query = query;
+
+    entry.database = utils::isValidUtf8(database) ? database : utils::sanitizeUtf8(database);
+    entry.query = utils::isValidUtf8(query) ? query : utils::sanitizeUtf8(query);
     entry.success = success;
-    entry.error = error;
+    entry.error = utils::isValidUtf8(error) ? error : utils::sanitizeUtf8(error);
 
     bool isSelect = false;
     if (!parsedAST.is_null() && parsedAST.contains("type")) {
         std::string astType = parsedAST["type"];
         isSelect = (astType == "SELECT_STMT" || astType == "SELECT");
     } else {
-        std::string upperQuery = query;
+        std::string upperQuery = entry.query; // Use sanitized query
         std::transform(upperQuery.begin(), upperQuery.end(), upperQuery.begin(), ::toupper);
         isSelect = upperQuery.find("SELECT") == 0 || upperQuery == "SHOW LOGS" || upperQuery == "SELECT * FROM LOGS";
     }
@@ -210,10 +212,11 @@ void ActivityLogger::logDatabaseAction(ActionType action, const std::string& dat
     entry.id = nextId++;
     entry.timestamp = std::chrono::system_clock::now();
     entry.action = action;
-    entry.database = database;
-    entry.details = details;
+
+    entry.database = utils::isValidUtf8(database) ? database : utils::sanitizeUtf8(database);
+    entry.details = utils::isValidUtf8(details) ? details : utils::sanitizeUtf8(details);
     entry.success = success;
-    entry.error = error;
+    entry.error = utils::isValidUtf8(error) ? error : utils::sanitizeUtf8(error);
     entry.isSelect = false;
 
     entries.push_back(entry);
@@ -263,6 +266,7 @@ nlohmann::json ActivityLogger::getHistoryLogs(const std::string& database, size_
             {"database", database}
     };
 }
+
 bool ActivityLogger::deleteLogById(size_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 

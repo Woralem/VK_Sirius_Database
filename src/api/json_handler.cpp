@@ -4,6 +4,7 @@
 #include "query_engine/parser.h"
 #include "query_engine/executor.h"
 #include "utils/activity_logger.h"
+#include "utils.h"
 #include <format>
 #include <sstream>
 
@@ -24,6 +25,11 @@ crow::response JsonHandler::createJsonResponse(int code, const json& body) {
 
 bool JsonHandler::validateDatabaseName(const std::string& name) {
     if (name.empty()) return false;
+
+    if (!utils::isValidUtf8(name)) {
+        return false;
+    }
+
     return std::ranges::all_of(name, [](char c) {
         return std::isalnum(c) || c == '_';
     });
@@ -48,10 +54,28 @@ bool JsonHandler::isSelectQuery(const std::string& query) {
            upperQuery == "SELECT * FROM LOGS";
 }
 
-
 crow::response JsonHandler::executeSingleQuery(const std::string& query_str,
                                               const std::string& database,
                                               std::shared_ptr<DatabaseManager> dbManager) {
+    if (!utils::isValidUtf8(query_str)) {
+        auto invalidBytePos = utils::findInvalidUtf8Byte(query_str);
+        std::string errorMsg = "Invalid UTF-8 in query";
+        if (invalidBytePos.has_value()) {
+            unsigned char invalidByte = static_cast<unsigned char>(query_str[*invalidBytePos]);
+            errorMsg = std::format("Invalid UTF-8 byte at index {}: 0x{:02X}",
+                                 *invalidBytePos, invalidByte);
+        }
+
+        auto& logger = ActivityLogger::getInstance();
+        logger.logQuery(database, query_str, {}, {}, false, errorMsg);
+
+        return createJsonResponse(400, json{
+            {"status", "error"},
+            {"message", errorMsg},
+            {"isSelect", isSelectQuery(query_str)}
+        });
+    }
+
     std::string upperQuery = query_str;
     std::transform(upperQuery.begin(), upperQuery.end(), upperQuery.begin(), ::toupper);
 
@@ -130,6 +154,21 @@ crow::response JsonHandler::executeSingleQuery(const std::string& query_str,
 
 crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
+        if (!utils::isValidUtf8(req.body)) {
+            auto invalidBytePos = utils::findInvalidUtf8Byte(req.body);
+            std::string errorMsg = "Invalid UTF-8 in request body";
+            if (invalidBytePos.has_value()) {
+                unsigned char invalidByte = static_cast<unsigned char>(req.body[*invalidBytePos]);
+                errorMsg = std::format("Invalid UTF-8 byte at index {}: 0x{:02X}",
+                                     *invalidBytePos, invalidByte);
+            }
+
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", errorMsg}
+            });
+        }
+
         auto body = json::parse(req.body);
         if (!body.contains("query") || !body["query"].is_string()) {
             return createJsonResponse(400, json{
@@ -140,6 +179,13 @@ crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_pt
 
         std::string query_str = body["query"];
         std::string database = body.value("database", "default");
+
+        if (!utils::isValidUtf8(database)) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Invalid UTF-8 in database name"}
+            });
+        }
 
         // Split queries by newline or semicolon
         std::vector<std::string> queries;
@@ -223,9 +269,11 @@ crow::response JsonHandler::handleQuery(const crow::request& req, std::shared_pt
         std::string database = "default";
 
         try {
-            auto body = json::parse(req.body);
-            query = body.value("query", "");
-            database = body.value("database", "default");
+            if (utils::isValidUtf8(req.body)) {
+                auto body = json::parse(req.body);
+                query = body.value("query", "");
+                database = body.value("database", "default");
+            }
         } catch (...) {}
 
         logger.logQuery(database, query, {}, {}, false, e.what());
@@ -253,6 +301,12 @@ crow::response JsonHandler::handleGetHistory(const crow::request& req, std::shar
         }
         if (req.url_params.get("database")) {
             database = req.url_params.get("database");
+            if (!utils::isValidUtf8(database)) {
+                return createJsonResponse(400, json{
+                    {"status", "error"},
+                    {"message", "Invalid UTF-8 in database parameter"}
+                });
+            }
         }
 
         return createJsonResponse(200, logger.getHistoryLogs(database, limit, offset));
@@ -282,6 +336,21 @@ crow::response JsonHandler::handleListDatabases(const crow::request& req, std::s
 
 crow::response JsonHandler::handleCreateDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
+        if (!utils::isValidUtf8(req.body)) {
+            auto invalidBytePos = utils::findInvalidUtf8Byte(req.body);
+            std::string errorMsg = "Invalid UTF-8 in request body";
+            if (invalidBytePos.has_value()) {
+                unsigned char invalidByte = static_cast<unsigned char>(req.body[*invalidBytePos]);
+                errorMsg = std::format("Invalid UTF-8 byte at index {}: 0x{:02X}",
+                                     *invalidBytePos, invalidByte);
+            }
+
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", errorMsg}
+            });
+        }
+
         auto body = json::parse(req.body);
         if (!body.contains("database") || !body["database"].is_string()) {
             return createJsonResponse(400, json{
@@ -295,7 +364,7 @@ crow::response JsonHandler::handleCreateDatabase(const crow::request& req, std::
         if (!validateDatabaseName(dbName)) {
             return createJsonResponse(400, json{
                 {"status", "error"},
-                {"message", "Invalid database name. Use only alphanumeric characters and underscores."}
+                {"message", "Invalid database name. Use only alphanumeric characters and underscores, and ensure valid UTF-8."}
             });
         }
 
@@ -327,6 +396,21 @@ crow::response JsonHandler::handleCreateDatabase(const crow::request& req, std::
 
 crow::response JsonHandler::handleRenameDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
+        if (!utils::isValidUtf8(req.body)) {
+            auto invalidBytePos = utils::findInvalidUtf8Byte(req.body);
+            std::string errorMsg = "Invalid UTF-8 in request body";
+            if (invalidBytePos.has_value()) {
+                unsigned char invalidByte = static_cast<unsigned char>(req.body[*invalidBytePos]);
+                errorMsg = std::format("Invalid UTF-8 byte at index {}: 0x{:02X}",
+                                     *invalidBytePos, invalidByte);
+            }
+
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", errorMsg}
+            });
+        }
+
         auto body = json::parse(req.body);
         if (!body.contains("oldName") || !body["oldName"].is_string() ||
             !body.contains("newName") || !body["newName"].is_string()) {
@@ -342,7 +426,7 @@ crow::response JsonHandler::handleRenameDatabase(const crow::request& req, std::
         if (!validateDatabaseName(newName)) {
             return createJsonResponse(400, json{
                 {"status", "error"},
-                {"message", "Invalid database name. Use only alphanumeric characters and underscores."}
+                {"message", "Invalid database name. Use only alphanumeric characters and underscores, and ensure valid UTF-8."}
             });
         }
 
@@ -375,6 +459,21 @@ crow::response JsonHandler::handleRenameDatabase(const crow::request& req, std::
 
 crow::response JsonHandler::handleDeleteDatabase(const crow::request& req, std::shared_ptr<DatabaseManager> dbManager) {
     try {
+        if (!utils::isValidUtf8(req.body)) {
+            auto invalidBytePos = utils::findInvalidUtf8Byte(req.body);
+            std::string errorMsg = "Invalid UTF-8 in request body";
+            if (invalidBytePos.has_value()) {
+                unsigned char invalidByte = static_cast<unsigned char>(req.body[*invalidBytePos]);
+                errorMsg = std::format("Invalid UTF-8 byte at index {}: 0x{:02X}",
+                                     *invalidBytePos, invalidByte);
+            }
+
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", errorMsg}
+            });
+        }
+
         auto body = json::parse(req.body);
         if (!body.contains("database") || !body["database"].is_string()) {
             return createJsonResponse(400, json{
@@ -539,10 +638,18 @@ crow::response JsonHandler::handleClearLogs(const crow::request& req, std::share
 
 crow::response JsonHandler::handleGetLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager) {
     try {
+        if (!utils::isValidUtf8(database)) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Invalid UTF-8 in database parameter"}
+            });
+        }
+
         auto& logger = ActivityLogger::getInstance();
         size_t limit = 100;
         size_t offset = 0;
         std::optional<bool> successFilter = std::nullopt;
+
         if (req.url_params.get("limit")) {
             limit = std::stoul(req.url_params.get("limit"));
         }
@@ -557,6 +664,7 @@ crow::response JsonHandler::handleGetLogsByDatabase(const crow::request& req, co
                 successFilter = false;
             }
         }
+
         return createJsonResponse(200, logger.getLogsByDatabase(database, limit, offset, successFilter));
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
@@ -651,6 +759,13 @@ crow::response JsonHandler::handleBulkDeleteLogs(const crow::request& req, std::
 
 crow::response JsonHandler::handleBulkDeleteLogsByDatabase(const crow::request& req, const std::string& database, std::shared_ptr<DatabaseManager> dbManager) {
     try {
+        if (!utils::isValidUtf8(database)) {
+            return createJsonResponse(400, json{
+                {"status", "error"},
+                {"message", "Invalid UTF-8 in database parameter"}
+            });
+        }
+
         auto& logger = ActivityLogger::getInstance();
 
         std::optional<bool> successFilter = std::nullopt;
