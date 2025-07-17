@@ -16,10 +16,18 @@ function App() {
     const [logsLoading, setLogsLoading] = useState(false);
     const [logFilter, setLogFilter] = useState('all'); // 'all', 'success', 'error'
 
-    // Загрузка списка БД при монтировании компонента
+    const [showHistory, setShowHistory] = useState(false);
+    const [history, setHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
     useEffect(() => {
         loadDatabases();
+        loadHistory();
     }, []);
+
+    useEffect(() => {
+        loadHistory();
+    }, [selectedDb]);
 
     const loadDatabases = async () => {
         try {
@@ -31,6 +39,93 @@ function App() {
         } catch (error) {
             console.error('Failed to load databases:', error);
         }
+    };
+
+    const loadHistory = async (database = null) => {
+        setHistoryLoading(true);
+        try {
+            const dbToLoad = database || selectedDb;
+            const response = await fetch(`/api/history?database=${dbToLoad}&limit=50`);
+            const data = await response.json();
+            console.log('Loaded history:', data);
+
+            if (data.history) {
+                setHistory(data.history);
+            } else {
+                setHistory([]);
+            }
+        } catch (error) {
+            console.error('Failed to load history:', error);
+            setHistory([]);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
+    const deleteHistoryItem = async (historyId) => {
+        if (!historyId) {
+            alert('This history item has no ID and cannot be deleted');
+            return false;
+        }
+
+        try {
+            const response = await fetch(`/api/logs/${historyId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                await loadHistory(); // Reload history
+                return true;
+            } else {
+                console.error('Delete failed:', data.message);
+                return false;
+            }
+        } catch (error) {
+            console.error('Failed to delete history item:', error);
+            alert(`Failed to delete history item: ${error.message}`);
+            return false;
+        }
+    };
+
+    const clearHistoryForDatabase = async () => {
+        if (!window.confirm(`Are you sure you want to clear all history for database "${selectedDb}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/logs/database/${selectedDb}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                await loadHistory();
+                alert(`History cleared for database "${selectedDb}"`);
+            } else {
+                alert('Failed to clear history: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Failed to clear history:', error);
+            alert('Failed to clear history');
+        }
+    };
+
+    const runHistoryQuery = (queryText) => {
+        setQuery(queryText);
+        setShowHistory(false);
+    };
+
+    const copyHistoryQuery = (queryText) => {
+        navigator.clipboard.writeText(queryText).then(() => {
+            alert('Query copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy query:', err);
+        });
     };
 
     const loadLogs = async (limit = 100, offset = 0, successFilter = null) => {
@@ -267,6 +362,10 @@ function App() {
         } else if (upperQuery === 'CLEAR LOGS') {
             await clearLogs();
             return;
+        } else if (upperQuery === 'SHOW HISTORY') {
+            setShowHistory(true);
+            await loadHistory();
+            return;
         }
 
         const API_URL = '/api/query';
@@ -303,6 +402,7 @@ function App() {
             if (data.status === 'success') {
                 setResult(data);
                 setError('');
+                await loadHistory();
             } else {
                 let formattedError = data.message || 'An unknown error occurred.';
                 if (data.errors && Array.isArray(data.errors)) {
@@ -311,6 +411,7 @@ function App() {
                 setError(formattedError);
                 setResult(null);
                 console.error('Backend error message:', formattedError, 'Full response data:', data);
+                await loadHistory();
             }
 
         } catch (networkError) {
@@ -495,6 +596,100 @@ function App() {
             <button className="logs-button" onClick={() => { setShowLogs(true); loadLogsWithCurrentFilter(); }}>
                 📋 Activity Logs
             </button>
+
+            <button
+                className="history-button"
+                onClick={() => { setShowHistory(true); loadHistory(); }}
+                style={{marginLeft: '10px'}}
+            >
+                📜 Query History ({selectedDb})
+            </button>
+
+            {/* History Modal */}
+            {showHistory && (
+                <div className="logs-modal" onClick={() => setShowHistory(false)}>
+                    <div className="logs-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="logs-header">
+                            <h2>Query History for "{selectedDb}"</h2>
+                            <div className="logs-actions">
+                                <button onClick={() => loadHistory()} disabled={historyLoading}>
+                                    {historyLoading ? 'Loading...' : 'Refresh'}
+                                </button>
+                                <button onClick={clearHistoryForDatabase} className="delete-btn">
+                                    Clear History
+                                </button>
+                                <button onClick={() => setShowHistory(false)}>Close</button>
+                            </div>
+                        </div>
+
+                        {historyLoading ? (
+                            <p>Loading history...</p>
+                        ) : history.length === 0 ? (
+                            <p>No query history found for database "{selectedDb}".</p>
+                        ) : (
+                            <div className="logs-list">
+                                {history.map((item, index) => (
+                                    <div key={item.id || index} className={`log-entry ${item.success ? 'success' : 'error'}`}>
+                                        <div className="log-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px'}}>
+                                            <span className="log-timestamp">{item.timestamp}</span>
+                                            <div style={{display: 'flex', gap: '5px'}}>
+                                                <button
+                                                    className="run-btn"
+                                                    style={{padding: '4px 8px', fontSize: '0.8rem', minWidth: 'auto', backgroundColor: '#4CAF50', color: 'white'}}
+                                                    onClick={() => runHistoryQuery(item.query)}
+                                                >
+                                                    Run
+                                                </button>
+                                                <button
+                                                    className="copy-btn"
+                                                    style={{padding: '4px 8px', fontSize: '0.8rem', minWidth: 'auto', backgroundColor: '#2196F3', color: 'white'}}
+                                                    onClick={() => copyHistoryQuery(item.query)}
+                                                >
+                                                    Copy
+                                                </button>
+                                                <button
+                                                    className="delete-btn"
+                                                    style={{padding: '4px 8px', fontSize: '0.8rem', minWidth: 'auto'}}
+                                                    onClick={async () => {
+                                                        if (!item.id) {
+                                                            alert('This history item has no ID and cannot be deleted');
+                                                            return;
+                                                        }
+
+                                                        if (window.confirm(`Delete history item #${item.id}?`)) {
+                                                            const success = await deleteHistoryItem(item.id);
+                                                            if (success) {
+                                                                alert('History item deleted successfully');
+                                                            }
+                                                        }
+                                                    }}
+                                                >
+                                                    Delete #{item.id || 'N/A'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="log-query" style={{
+                                            backgroundColor: '#f5f5f5',
+                                            padding: '8px',
+                                            borderRadius: '4px',
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.9rem',
+                                            marginBottom: '5px',
+                                            border: item.success ? '1px solid #4CAF50' : '1px solid #f44336'
+                                        }}>
+                                            {item.query}
+                                        </div>
+                                        <div style={{fontSize: '0.8rem', color: item.success ? '#4CAF50' : '#f44336'}}>
+                                            Status: {item.success ? 'SUCCESS' : 'ERROR'}
+                                            {item.isSelect && ' (SELECT)'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {showLogs && (
                 <div className="logs-modal" onClick={() => setShowLogs(false)}>
@@ -744,6 +939,7 @@ e.g., CREATE TABLE users (id INT, name VARCHAR);
 e.g., INSERT INTO users VALUES (1, 'Alice');
 e.g., SELECT * FROM users;
 e.g., SHOW LOGS;
+e.g., SHOW HISTORY;
 e.g., DOWNLOAD LOGS;
 e.g., CLEAR LOGS;"
                         rows={5}

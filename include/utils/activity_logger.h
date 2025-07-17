@@ -93,8 +93,7 @@ public:
 
     nlohmann::json getLogsByDatabase(const std::string& database, size_t limit = 100,
                                     size_t offset = 0, std::optional<bool> successFilter = std::nullopt) const;
-
-    nlohmann::json getHistoryLogs(size_t limit = 100, size_t offset = 0) const;
+    nlohmann::json getHistoryLogs(const std::string& database, size_t limit = 100, size_t offset = 0) const;
 
     size_t deleteLogsBySuccess(std::optional<bool> successFilter);
     size_t deleteLogsByDatabase(const std::string& database, std::optional<bool> successFilter = std::nullopt);

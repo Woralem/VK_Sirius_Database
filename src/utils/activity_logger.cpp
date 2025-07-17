@@ -226,12 +226,12 @@ void ActivityLogger::logDatabaseSwitch(const std::string& fromDb, const std::str
                      std::format("Switched from '{}' to '{}'", fromDb, toDb));
 }
 
-nlohmann::json ActivityLogger::getHistoryLogs(size_t limit, size_t offset) const {
+nlohmann::json ActivityLogger::getHistoryLogs(const std::string& database, size_t limit, size_t offset) const {
     std::lock_guard<std::mutex> lock(mutex);
 
     std::vector<const LogEntry*> filteredEntries;
     for (const auto& entry : entries) {
-        if (!entry.query.empty()) {
+        if (!entry.query.empty() && entry.database == database) {
             filteredEntries.push_back(&entry);
         }
     }
@@ -256,13 +256,13 @@ nlohmann::json ActivityLogger::getHistoryLogs(size_t limit, size_t offset) const
     }
 
     return {
-        {"history", result},
-        {"total", filteredEntries.size()},
-        {"offset", offset},
-        {"limit", limit}
+            {"history", result},
+            {"total", filteredEntries.size()},
+            {"offset", offset},
+            {"limit", limit},
+            {"database", database}
     };
 }
-
 bool ActivityLogger::deleteLogById(size_t id) {
     std::lock_guard<std::mutex> lock(mutex);
 

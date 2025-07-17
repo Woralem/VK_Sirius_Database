@@ -243,6 +243,7 @@ crow::response JsonHandler::handleGetHistory(const crow::request& req, std::shar
 
         size_t limit = 100;
         size_t offset = 0;
+        std::string database = "default";
 
         if (req.url_params.get("limit")) {
             limit = std::stoul(req.url_params.get("limit"));
@@ -250,8 +251,11 @@ crow::response JsonHandler::handleGetHistory(const crow::request& req, std::shar
         if (req.url_params.get("offset")) {
             offset = std::stoul(req.url_params.get("offset"));
         }
+        if (req.url_params.get("database")) {
+            database = req.url_params.get("database");
+        }
 
-        return createJsonResponse(200, logger.getHistoryLogs(limit, offset));
+        return createJsonResponse(200, logger.getHistoryLogs(database, limit, offset));
 
     } catch (const std::exception& e) {
         return createJsonResponse(500, json{
