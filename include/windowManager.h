@@ -5,7 +5,12 @@
 #include <mutex>
 
 class WindowManager {
-    std::map<std::string, std::string> manager;
+    static constexpr auto compareByNum = [](const std::string& a, const std::string& b) -> bool {
+        int A = std::stoi(a.substr(5));
+        int B = std::stoi(b.substr(5));
+        return A < B;
+    };
+    std::map<std::string, std::string, decltype(compareByNum)> manager;
     std::string cur_window;
     std::mutex mtx;
     int max_id = 1;

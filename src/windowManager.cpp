@@ -9,7 +9,7 @@
 
 using json = nlohmann::json;
 
-WindowManager::WindowManager() {
+WindowManager::WindowManager(): manager(compareByNum) {
     cur_window = "File_1";
     manager[cur_window] = "";
 }
@@ -75,10 +75,10 @@ crow::response WindowManager::remove(const std::string& req) {
     }
     std::string id = json_request["id"].get<std::string>();
     std::lock_guard<std::mutex> lock(mtx);
-    if (!WindowManager::manager.contains(id) || id == cur_window) {
+    if (!WindowManager::manager.contains(id) || id == "File_1") {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
-            {"error", ("Unknown id: " + id)}
+            {"error", ("Cant be removed or Unknown id: " + id)}
             });
     }
     manager.erase(id);
@@ -183,7 +183,12 @@ crow::response WindowManager::getCurrent() {
 
 //Обновить текущее окно
 crow::response WindowManager:: update(const std::string& req) {
-    json json_request = json::parse(req);
+    json json_request;
+    try {
+        json_request = json::parse(req);
+    } catch (const json::parse_error& e) {
+        return JsonHandler::createJsonResponse(400, {{"error", "Invalid JSON"}});
+    }
     if (!json_request.contains("value")) {
         return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
@@ -193,19 +198,23 @@ crow::response WindowManager:: update(const std::string& req) {
     std::lock_guard<std::mutex> lock(mtx);
     std::string id = cur_window;
     CROW_LOG_INFO << "Current window: " << cur_window;
+    CROW_LOG_INFO << "value: " << json_request["value"].get<std::string>();
     if (id == "") {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("There are no active window")}
             });
     }
+    CROW_LOG_INFO << "1";
     if (!manager.contains(id)) {
         return JsonHandler::createJsonResponse(409, json{
             {"status", "error"},
             {"error", ("Internal error with cur_window")}
             });
     }
+    CROW_LOG_INFO << "2";
     manager[id] = json_request["value"].get<std::string>();
+    CROW_LOG_INFO << "3";
     return JsonHandler::createJsonResponse(200, json{
         {"status", "success"},
     });

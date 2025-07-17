@@ -20,7 +20,6 @@ namespace LogHandler {
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");
         res.body=db_res.text;
-        CROW_LOG_INFO<<"request was send to DATABASE: "<<res.body << "\n with code: " << res.code;
         return res;
     }
     crow::response getErrors(const std::string& cur_db) {
@@ -58,8 +57,7 @@ namespace LogHandler {
     crow::response deleteQueries(const std::string& cur_db) {
         crow::response res;
         cpr::Response db_res = cpr::Delete(
-            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), cur_db)},
-            cpr::Parameters{{"success", "true"}});
+            cpr::Url{std::format("{}/api/logs/database/{}",HttpServer::getServerURL(), cur_db)});
         res.code = db_res.status_code;
         res.add_header("Content-Type", "application/json");
         res.add_header("Access-Control-Allow-Origin", "*");

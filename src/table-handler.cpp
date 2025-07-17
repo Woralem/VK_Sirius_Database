@@ -185,6 +185,7 @@ namespace TableHandler{
         db_req["database"] = cur_db;
         CROW_LOG_INFO <<"2";
         db_req["query"] = json_request["query"].get<std::string>();
+        CROW_LOG_INFO <<db_req["query"].get<std::string>();
         cpr::Response db_res = cpr::Post(
             cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
             cpr::Body{db_req.dump()},
