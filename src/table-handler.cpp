@@ -2,6 +2,7 @@
 #include <crow.h>
 #include<string>
 #include<cpr/cpr.h>
+#include<algorithm>
 
 #include "table-handler.h"
 
@@ -177,7 +178,11 @@ namespace TableHandler{
     crow::response makeQuery(const std::string& cur_db, std::string& cur_table,
         json& cur_headers, json& cur_types,std::string& cur_select, const std::string& req) {
         crow::response res;
-        json json_request = json::parse(req);
+        std::string req_temp = req;
+        std::replace(req_temp.begin(), req_temp.end(), '\n', ' ');
+        CROW_LOG_INFO << req_temp;
+        json json_request = json::parse(req_temp);
+        CROW_LOG_INFO << json_request;
         CROW_LOG_INFO <<"1";
         if (!json_request.contains("query") || !json_request["query"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
@@ -202,8 +207,12 @@ namespace TableHandler{
         res.body=db_res.text;
         //Обновление cur_table при надобности:
         json json_response = json::parse(db_res.text);
+        CROW_LOG_INFO << json_response;
         CROW_LOG_INFO <<"4";
         CROW_LOG_INFO<<json_response["isSelect"];
+
+
+
         if (json_response["status"] == "success" && json_response["isSelect"].get<bool>() == true) {
             CROW_LOG_INFO <<"5";
             cur_table = json_response["table_name"].get<std::string>();
@@ -216,6 +225,7 @@ namespace TableHandler{
                 cur_headers.push_back(item["content"].get<std::string>());
                 cur_types.push_back(item["type"].get<std::string>());
             }
+
             CROW_LOG_INFO << "Table changed";
             CROW_LOG_INFO<< "Header: " << cur_headers;
             CROW_LOG_INFO<< "Types: " << cur_types;
@@ -227,8 +237,10 @@ namespace TableHandler{
     }
     crow::response table(const std::string& cur_db,  std::string& cur_table,
          json& cur_headers, json& cur_types, std::string& cur_select, const std::string& req) {
+        std::string req_temp = req;
         CROW_LOG_INFO << "table func";
-        json json_request = json::parse(req);
+        std::replace(req_temp.begin(), req_temp.end(), '\n', ' ');
+        json json_request = json::parse(req_temp);
         CROW_LOG_INFO <<"json was parsed";
         if (!json_request.contains("type") || !json_request["type"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
@@ -257,6 +269,11 @@ namespace TableHandler{
                 return JsonHandler::createJsonResponse(400, json{
                     {"status", "error"},
                 {"error", "Invalid request type"}});
+            default:
+                return JsonHandler::createJsonResponse(400, json{
+                    {"status", "error"},
+                    {"error", "Invalid request type"}
+                });
         }
     }
     int parse_column_number_from_cell_id(std::string_view cell_id) {
@@ -292,6 +309,7 @@ namespace TableHandler{
         //Обновление cur_table при надобности:
         json json_response = json::parse(db_res.text);
         CROW_LOG_INFO <<"4";
+        CROW_LOG_INFO << json_response;
         CROW_LOG_INFO<<json_response["isSelect"];
         if (json_response["status"] == "success" && json_response["isSelect"].get<bool>() == true) {
             CROW_LOG_INFO <<"5";
