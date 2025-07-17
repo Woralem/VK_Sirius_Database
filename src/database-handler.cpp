@@ -96,11 +96,13 @@ namespace DBhandler {
         res.add_header("Access-Control-Allow-Origin", "*");
         json dblist = json::parse(db_res.text);
 
-        std::vector<std::string> vec;
+        std::vector<std::string> vec {"default"};
         for (const auto& item : dblist["databases"]) {
-            vec.push_back(item.get<std::string>());
+            if (item.get<std::string>() != "default") {
+                vec.push_back(item.get<std::string>());
+            }
         }
-        std::sort(vec.begin(), vec.end());
+        std::sort(vec.begin() + 1, vec.end());
 
         res.body = json{{"databases", vec}}.dump();
         return res;
