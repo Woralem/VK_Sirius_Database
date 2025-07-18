@@ -10,7 +10,7 @@ using json = nlohmann::json;
 class HttpServer {
 public:
     static const std::string& getServerURL() {
-        static const std::string instance = "http://database_server:8080";
+        static const std::string instance = "http://database_server:8080";//"http://localhost:8080";//
         return instance;
     }
     HttpServer();

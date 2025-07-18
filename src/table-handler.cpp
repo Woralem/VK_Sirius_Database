@@ -145,20 +145,24 @@ namespace TableHandler{
     crow::response renameColumn(const std::string& cur_db,  std::string& cur_table,
         json& cur_headers,  json& cur_types, std::string& cur_select, const json& json_request) {
         crow::response res;
+        CROW_LOG_INFO <<"rename started";
         if (!json_request.contains("old_column_name") || !json_request["old_column_name"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'old_column_name' field"}
             });
         }
+        CROW_LOG_INFO<< "1";
         if (!json_request.contains("new_column_name") || !json_request["new_column_name"].is_string()) {
             return JsonHandler::createJsonResponse(400, json{
                 {"status", "error"},
                 {"message", "Request body must contain 'new_column_name' field"}
             });
         }
+        CROW_LOG_INFO<< "2";
         std::string old_col_name = json_request["old_column_name"].get<std::string>();
         std::string new_col_name = json_request["new_column_name"].get<std::string>();
+        CROW_LOG_INFO<< "3";
         json db_req;
         db_req["database"] = cur_db;
         db_req["query"] = "ALTER TABLE " + cur_table +
@@ -169,10 +173,14 @@ namespace TableHandler{
             cpr::Url{std::format("{}/api/query", HttpServer::getServerURL())},
             cpr::Body{db_req.dump()},
             cpr::Header{{"Content-Type", "application/json"}});
+        CROW_LOG_INFO<< "4";
+        CROW_LOG_INFO << "db_res.text: " << db_res.text;
         if (db_res.status_code >= 300) {
             return JsonHandler::createJsonResponse(db_res.status_code, json::parse(db_res.text));
         }
+        CROW_LOG_INFO<< "5";
         res = makeSelect(cur_db, cur_table, cur_headers, cur_types, cur_select);
+        CROW_LOG_INFO <<"rename ended";
         return res;
     }
     crow::response makeQuery(const std::string& cur_db, std::string& cur_table,
@@ -212,8 +220,8 @@ namespace TableHandler{
         CROW_LOG_INFO<<json_response["isSelect"];
 
 
-
-        if (json_response["status"] == "success" && json_response["isSelect"].get<bool>() == true) {
+        //json_response["results"].is_boolean();
+        if (json_response["status"] == "success"&&!json_response.contains("results") && json_response["isSelect"].get<bool>() == true) {
             CROW_LOG_INFO <<"5";
             cur_table = json_response["table_name"].get<std::string>();
             cur_headers = json::array();
@@ -290,6 +298,7 @@ namespace TableHandler{
     }
     crow::response makeSelect(const std::string& cur_db, std::string& cur_table,
          json& cur_headers, json& cur_types, const std::string& cur_select) {
+        CROW_LOG_INFO<<"makeSelect startes";
         crow::response res;
         json db_req;
         db_req["database"] = cur_db;
@@ -327,7 +336,7 @@ namespace TableHandler{
         }
         CROW_LOG_INFO<< "Table: " << cur_table;
         CROW_LOG_INFO << "code: " << res.code;
-        CROW_LOG_INFO << "========";
+        CROW_LOG_INFO << "makeSelect ended";
         return res;
     }
 };
