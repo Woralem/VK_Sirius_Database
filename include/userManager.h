@@ -1,56 +1,79 @@
 #pragma once
+
 #include <string>
 #include <vector>
-#include <crow.h>
-#include <nlohmann/json.hpp>
+#include <optional>
+#include <algorithm> // Для std::find_if
+#include <stdexcept> // Для std::runtime_error
+#include <sodium.h> // Для libsodium
 
+// Внешние зависимости, если они используются в Crow или nlohmann/json
+#include "crow.h" // Предполагается, что Crow установлен и доступен
+#include "nlohmann/json.hpp" // Предполагается, что nlohmann/json установлен и доступен
 
+// Структура для представления данных о доступной базе данных для пользователя
 struct DB {
-    std::string identificator;
-    int accessLevel; //1 2 3
+    std::string dbName;      // Имя базы данных
+    std::string dbCode;      // Уникальный код базы данных
+    int accessLevel;         // Уровень доступа (1: полный, 2: ограниченный, 3: только чтение)
 };
-// Удалила поле 'password' из структуры User тк небезопасно
+
+// Структура для представления данных пользователя
 struct User {
     std::string login;
-    std::string code;
-    std::vector<DB> dataBases;
+    std::string hashedPassword;
+    std::string userCode;                          // Уникальный код пользователя
+    std::vector<DB> accessibleDBs;                 // Список баз данных, к которым у пользователя есть доступ
+};
+
+// Структура для глобальных метаданных о базах данных (на бэкенде)
+struct GlobalDBMetadata {
+    std::string dbName;
+    std::string ownerLogin; // Логин пользователя, создавшего БД
+    std::string dbCode;     // Уникальный код самой базы данных
 };
 
 
 class UserManager {
 public:
-    std::string loginUser(const std::string& jsonBody, std::string& statusMessage, User& user);
-    crow::response registerUser(const std::string& jsonBody);
+    UserManager() = default; // Конструктор по умолчанию
 
-    // проверка существования пользователя
-    bool userExists(const std::string& username);
-    // создание пользователя
-    bool createUser(const std::string& username, const std::string& password);
-    // валидация пользователя (пароля)
-    bool validateUser(const std::string& username, const std::string& password);
-    // генерация токена (если он используется)
-    std::string generateAuthToken(const std::string& username);
-    // получение данных пользователя по логину
-    bool getUserByLogin(const std::string& login, User& user);
+    // Методы API (доступные через HTTP-запросы)
+    crow::response registerUser(const std::string& jsonBody);
+    std::string loginUser(const std::string& jsonBody, std::string& statusMessage, User& user);
+    crow::response createDatabase(const std::string& jsonBody);
+    crow::response modifyDatabase(const std::string& jsonBody);
+    crow::response getAccessibleDatabases(const std::string& jsonBody);
+    crow::response manageDatabaseAccess(const std::string& jsonBody);
+    crow::response deleteUser(const std::string& jsonBody);
+
 
 private:
-    // Эти методы должны стать частью реализации UserManager,
-    // а не просто свободными функциями.
-    //метод для проверки существования логина в БД
-    bool doesLoginExist(const std::string& login);
+    // Вспомогательные методы для работы с пользователями и БД (внутренние)
+    bool doesUserExistInDB(const std::string& login);
+    bool isValidLogin(const std::string& login);
+    bool isValidPassword(const std::string& password);
+    bool addUserToDB(const User& user, const std::string& hashedPassword);
+    std::optional<User> getUserFromDB(const std::string& login);
+    bool updateUserInDB(const User& user);
+    bool deleteUserFromDB(const std::string& login);
 
-    //метод для добавления пользователя в БД
-    void addUser(User& person, const std::string& hashedPassword); // Добавляем hashedPassword
+    std::string hashPassword(const std::string& password);
+    bool verifyPassword(const std::string& password, const std::string& hashedPassword);
+    std::string generateSecureCode(); // Генерирует уникальный 8-байтовый код
 
-    //метод для получения пользователя
-    void getUser(User& person);
+    // Вспомогательные методы для работы с базами данных на бэкенде
+    bool doesDatabaseExistBackend(const std::string& dbName);
+    bool doesTableExistInDatabase(const std::string& dbName, const std::string& tableName);
+    bool createDatabaseBackend(const std::string& dbName);
+    bool createUsersTableInDatabase(const std::string& dbName);
+    bool writeUserDataToDatabaseTable(const std::string& dbName, const User& user);
+    std::optional<User> getUserDataFromDatabaseTable(const std::string& dbName, const std::string& login);
+    bool updateUserDataInDatabaseTable(const std::string& dbName, const User& user);
+    bool deleteUserRowFromDatabaseTable(const std::string& dbName, const std::string& login);
 
-    //метод для проверки пароля на корректность
-    bool validPassword(const std::string& password);
 
-    //метод для генерации персонального кода
-    std::string generateCode();
-
-    //метод для хэширования пароля
-    std::string hashingPassword(const std::string& password);
+    // Временное хранилище метаданных о базах данных.
+    // В реальном приложении это будет извлекаться из БД
+    std::vector<GlobalDBMetadata> globalDBs;
 };
