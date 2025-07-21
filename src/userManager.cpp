@@ -137,11 +137,6 @@ bool UserManager::deleteUserFromDB(const std::string& login) {
 
 // Метод для хэширования пароля
 std::string UserManager::hashPassword(const std::string& password) {
-    // Инициализация libsodium, если еще не инициализирована
-    if (sodium_init() == -1) {
-        throw std::runtime_error("libsodium initialization failed");
-    }
-
     char hashed_password[crypto_pwhash_STRBYTES];
     // Используем crypto_pwhash_str для получения строкового представления хэша
     if (crypto_pwhash_str(hashed_password, password.c_str(), password.length(),
